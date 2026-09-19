@@ -1,5 +1,6 @@
 import os
 import json
+import traceback
 from groq import Groq
 from dotenv import load_dotenv
 
@@ -25,10 +26,26 @@ def _extract_tldr(summary) -> str:
     return ""
 
 
+def _empty_insight(idx: int = -1) -> dict:
+    return {
+        "index": idx,
+        "tldr": "N/A",
+        "problem": "N/A",
+        "methods": "N/A",
+        "benchmarks": "N/A",
+    }
+
+
 def extract_insights_batch(papers):
     """
     Extracts insights for a batch of papers in a single LLM call.
     Returns: List of insights, aligned 1:1 with the papers list by position.
+
+    NOTE: does NOT use response_format=json_object. Same reason as
+    get_cluster_labels below — the gpt-oss reasoning model sometimes emits
+    nothing in the content channel under strict JSON mode, which Groq surfaces
+    as `json_validate_failed` with empty failed_generation. We parse manually
+    with a markdown-fence stripper instead.
     """
     if not api_key:
         return [{"error": "GROQ_API_KEY missing"}] * len(papers)
@@ -59,11 +76,19 @@ def extract_insights_batch(papers):
                 {"role": "user", "content": prompt},
             ],
             model=MODEL,
-            response_format={"type": "json_object"},
             extra_body={"reasoning_effort": "low", "max_completion_tokens": 4096},
         )
 
-        data = json.loads(chat_completion.choices[0].message.content)
+        content = (chat_completion.choices[0].message.content or "").strip()
+        if not content:
+            print("Batch extraction: model returned empty content")
+            return [_empty_insight(i) for i in range(len(papers))]
+
+        # Strip markdown fences if the model added them despite instructions
+        if content.startswith("```"):
+            content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
+        data = json.loads(content)
 
         # Normalize: accept {"papers":[...]}, any single-list object, or index-keyed objects
         if isinstance(data, dict):
@@ -94,13 +119,13 @@ def extract_insights_batch(papers):
                 aligned[pos] = item
 
         return [
-            it if it is not None else
-            {"tldr": "N/A", "problem": "N/A", "methods": "N/A", "benchmarks": "N/A"}
-            for it in aligned
+            it if it is not None else _empty_insight(i)
+            for i, it in enumerate(aligned)
         ]
 
     except Exception as e:
         print(f"Error during Groq batch extraction: {e}")
+        traceback.print_exc()
         return [
             {"index": i, "tldr": "Error", "problem": "Error",
              "methods": "Error", "benchmarks": "Error"}
