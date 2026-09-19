@@ -31,8 +31,10 @@ export default function ReadingMap({ data }: { data: GraphData }) {
 
   useEffect(() => {
     if (!fgRef.current) return;
-    fgRef.current.d3Force('charge')?.strength(-600);
-    fgRef.current.d3Force('link')?.distance(180);
+    fgRef.current.d3Force('charge')?.strength(-300);
+    fgRef.current.d3Force('link')?.distance(140);
+    // Note: forceCenter is typically managed by the graph internal simulation,
+    // but we can explicitly set it if needed.
   }, [data]);
 
 
@@ -47,8 +49,9 @@ export default function ReadingMap({ data }: { data: GraphData }) {
 
   const radiusOf = (n: Node) => {
     const totalNodes = data?.nodes?.length || 0;
-    return 14 - (rankOf(n) / Math.max(totalNodes - 1, 1)) * 9;
+    return 32 - (rankOf(n) / Math.max(totalNodes - 1, 1)) * 13;
   };
+
 
   const colorOf = (n: Node) => {
     const totalNodes = data?.nodes?.length || 0;

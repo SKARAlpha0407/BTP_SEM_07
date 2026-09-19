@@ -48,22 +48,31 @@ def rank_papers(query: str, papers: List):
     if not papers:
         return []
 
-    model = _get_model()
+    def _normalize(s: str) -> str:
+        import re
+        return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
 
+    norm_query = _normalize(query)
+
+    model = _get_model()
     query_emb = model.encode(query, convert_to_tensor=True)
     abstracts = [p.abstract for p in papers]
 
-    # Serialize the batch encode — the only place a race could occur.
     with _model_lock:
         paper_embs = model.encode(abstracts, convert_to_tensor=True)
 
-    # util.cos_sim is pure math on CPU tensors — safe to run outside the lock.
     scores = util.cos_sim(query_emb, paper_embs)[0]
 
     for i, paper in enumerate(papers):
         paper.relevance_score = float(scores[i])
 
-    return sorted(papers, key=lambda x: x.relevance_score or 0, reverse=True)
+    def sort_key(p):
+        norm_title = _normalize(p.title)
+        if norm_title == norm_query:
+            return (1, 0)
+        return (0, p.relevance_score or 0)
+
+    return sorted(papers, key=sort_key, reverse=True)
 
 def embed_batch(texts):
     """

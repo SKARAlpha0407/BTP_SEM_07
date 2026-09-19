@@ -37,42 +37,62 @@ def _build_query(topic: str) -> str:
 def search_papers(topic: str, max_results: int = 30) -> List[Paper]:
     client = arxiv.Client()
 
-    query = _build_query(topic)
-    is_title_query = query.startswith('ti:"')
+    # 2a. DUAL SEARCH: search both all: and ti:
+    all_query = f"all:{topic}"
+    ti_query = f"ti:\"{topic}\""
 
-    search = arxiv.Search(
-        query=query,
-        max_results=max_results,
-        sort_by=arxiv.SortCriterion.Relevance,
-    )
-
-    papers: List[Paper] = []
-    for result in client.results(search):
-        title = result.title.replace("\n", " ").strip()
-        abstract = result.summary.replace("\n", " ").strip()
-        arxiv_id = result.entry_id.split("/")[-1]
-
-        papers.append(
-            Paper(
-                title=title,
-                authors=[author.name for author in result.authors],
-                abstract=abstract,
-                arxiv_id=arxiv_id,
-                arxiv_url=result.entry_id,
-                pdf_url=result.pdf_url,
-                published=result.published.strftime("%Y-%m-%d"),
-                categories=result.categories,
-            )
+    def fetch_papers(q: str, limit: int) -> List[Paper]:
+        search = arxiv.Search(
+            query=q,
+            max_results=limit,
+            sort_by=arxiv.SortCriterion.Relevance,
         )
+        results = []
+        for result in client.results(search):
+            title = result.title.replace("\n", " ").strip()
+            abstract = result.summary.replace("\n", " ").strip()
+            arxiv_id = result.entry_id.split("/")[-1]
+            results.append(
+                Paper(
+                    title=title,
+                    authors=[author.name for author in result.authors],
+                    abstract=abstract,
+                    arxiv_id=arxiv_id,
+                    arxiv_url=result.entry_id,
+                    pdf_url=result.pdf_url,
+                    published=result.published.strftime("%Y-%m-%d"),
+                    categories=result.categories,
+                )
+            )
+        return results
 
-    # When the user quoted an exact title, prefer papers whose title
-    # matches it word-for-word (case/punctuation insensitive). If any
-    # exist, return only those and drop the fanfic variants.
-    if is_title_query:
-        wanted = _normalize(query[4:-1])
-        exact = [p for p in papers if _normalize(p.title) == wanted]
-        others = [p for p in papers if _normalize(p.title) != wanted]
-        papers = exact + others
+    # Fetch from both sources
+    all_results = fetch_papers(all_query, max_results)
+    ti_results = fetch_papers(ti_query, 10) # smaller limit for title matches
+
+    # Merge and deduplicate by arxiv_id
+    merged = {}
+    for p in (ti_results + all_results):
+        merged[p.arxiv_id] = p
+
+    papers = list(merged.values())
+
+    # 2b. TITLE-MATCH PRIORITIZATION
+    norm_topic = _normalize(topic)
+    topic_words = [w for w in norm_topic.split() if len(w) > 3]
+
+    def get_tier(p: Paper) -> int:
+        norm_title = _normalize(p.title)
+        # Tier 1: Exact match
+        if norm_title == norm_topic:
+            return 0
+        # Tier 2: Contains all significant words
+        if all(word in norm_title for word in topic_words) and topic_words:
+            return 1
+        # Tier 3: Others
+        return 2
+
+    papers.sort(key=lambda p: get_tier(p))
 
     return papers
 
