@@ -13,3 +13,4 @@ frontend/.turbo/
 frontend_backup_*.tgz
 *.tgz
 .DS_Store
+uvicorn.log
