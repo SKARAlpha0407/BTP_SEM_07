@@ -40,9 +40,9 @@ export default function Home() {
         <title>Research Copilot — arXiv Search</title>
       </Head>
 
-      <header className="border-b border-gray-100 py-6 px-8 flex items-center justify-between">
+      <header className="border-b border-gray-200 py-8 px-8 bg-gray-50/50 flex items-center justify-between">
         <h1 className="text-xl font-bold tracking-tight">Research Copilot</h1>
-        <form onSubmit={handleSearch} className="flex gap-2 w-1/3">
+        <form onSubmit={handleSearch} className="flex gap-3 w-1/3 items-center">
           <input 
             className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             placeholder="Enter a research topic (e.g. RAG)..."
@@ -71,7 +71,7 @@ export default function Home() {
 
         {results && (
           <div className="space-y-12">
-            <section className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
+            <section className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-2xl border border-blue-200 shadow-sm">
               <h3 className="text-sm font-bold text-blue-600 uppercase tracking-wider mb-2">Cross-paper Synthesis</h3>
               <p className="text-lg leading-relaxed text-gray-800">{results.synthesis}</p>
             </section>
