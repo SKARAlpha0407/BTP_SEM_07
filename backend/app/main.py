@@ -102,7 +102,7 @@ def search(req: SearchRequest):
             for i in range(len(top_papers)):
                 for j in range(i + 1, len(top_papers)):
                     sim = float(sim_matrix[i][j])
-                    if sim > 0.7:
+                    if sim > 0.55:
                         links.append({"source": i, "target": j, "weight": sim})
 
         # --- 7. Connected-components clustering (store INDICES) ---
