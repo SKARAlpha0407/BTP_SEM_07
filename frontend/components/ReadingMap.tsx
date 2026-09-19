@@ -33,8 +33,6 @@ export default function ReadingMap({ data }: { data: GraphData }) {
     if (!fgRef.current) return;
     fgRef.current.d3Force('charge')?.strength(-300);
     fgRef.current.d3Force('link')?.distance(140);
-    // Note: forceCenter is typically managed by the graph internal simulation,
-    // but we can explicitly set it if needed.
   }, [data]);
 
 
