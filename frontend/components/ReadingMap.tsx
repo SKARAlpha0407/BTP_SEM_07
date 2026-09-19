@@ -30,27 +30,32 @@ export default function ReadingMap({ data }: { data: GraphData }) {
   const [dims, setDims] = useState({ width: 800, height: 500 });
 
   useEffect(() => {
-    const el = wrapperRef.current;
-    if (!el) return;
-    const measure = () =>
-      setDims({ width: el.clientWidth, height: el.clientHeight });
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const clusterList = useMemo(() => {
-    if (!data?.nodes) return [] as string[];
-    return Array.from(
-      new Set(data.nodes.map((n) => n.cluster).filter(Boolean))
-    ) as string[];
+    if (!fgRef.current) return;
+    fgRef.current.d3Force('charge')?.strength(-600);
+    fgRef.current.d3Force('link')?.distance(180);
   }, [data]);
 
-  const colorOf = (c?: string) => {
-    const i = c ? clusterList.indexOf(c) : -1;
-    return i >= 0 ? CLUSTER_COLORS[i % CLUSTER_COLORS.length] : '#94a3b8';
+
+  const sortedNodes = useMemo(() => {
+    if (!data?.nodes) return [];
+    return [...data.nodes].sort((a, b) => (b.val || 0) - (a.val || 0));
+  }, [data]);
+
+  const rankOf = (n: Node) => {
+    return sortedNodes.findIndex((sn) => sn.id === n.id);
   };
+
+  const radiusOf = (n: Node) => {
+    const totalNodes = data?.nodes?.length || 0;
+    return 14 - (rankOf(n) / Math.max(totalNodes - 1, 1)) * 9;
+  };
+
+  const colorOf = (n: Node) => {
+    const totalNodes = data?.nodes?.length || 0;
+    const hue = (rankOf(n) / Math.max(totalNodes - 1, 1)) * 280;
+    return `hsl(${hue}, 72%, 48%)`;
+  };
+
 
   const hasData = !!data && Array.isArray(data.nodes) && data.nodes.length > 0;
 
@@ -80,12 +85,13 @@ export default function ReadingMap({ data }: { data: GraphData }) {
             d3AlphaDecay={0.02}
             d3VelocityDecay={0.3}
             onEngineStop={() => fgRef.current?.zoomToFit(400, 80)}
-            nodeRelSize={6}
-            nodeVal={(n: any) => Math.max((n.val || 0.5) * 40, 8)}
-            nodeColor={(n: any) => colorOf(n.cluster)}
+            nodeRelSize={4}
+            nodeVal={(n: any) => Math.pow(radiusOf(n), 2) / 16}
+            nodeColor={(n: any) => colorOf(n)}
             nodeLabel={(n: any) => `${n.title}\n${n.cluster ?? ''}`}
-            linkColor={(l: any) => `rgba(59, 130, 246, ${Math.min(0.35 + (l.weight ?? 0.5), 0.9)})`}
-            linkWidth={(l: any) => Math.max((l.weight || 0) * 2.5, 1.5)}
+            linkColor={(l: any) => `rgba(59, 130, 246, ${Math.min(0.5 + (l.weight ?? 0.5) * 0.4, 0.9)})`}
+            linkWidth={(l: any) => 1.5 + (l.weight ?? 0.5) * 2}
+
             linkDirectionalParticles={2}
             linkDirectionalParticleWidth={1.5}
             linkDirectionalParticleSpeed={0.004}
@@ -94,27 +100,22 @@ export default function ReadingMap({ data }: { data: GraphData }) {
             linkDirectionalArrowRelPos={0.5}
           />
 
-          {clusterList.length > 0 && (
+          {hasData && (
             <div className="absolute bottom-3 left-3 z-10 bg-white/90 backdrop-blur border border-gray-200 rounded-lg p-3">
-              <div className="text-xs font-semibold text-gray-500 mb-1.5">
-                Clusters
-              </div>
-              <div className="flex flex-wrap gap-x-3 gap-y-1">
-                {clusterList.map((c) => (
-                  <div
-                    key={c}
-                    className="flex items-center gap-1.5 text-xs text-gray-700"
-                  >
-                    <span
-                      className="inline-block w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: colorOf(c) }}
-                    />
-                    {c}
-                  </div>
-                ))}
+              <div className="flex items-center gap-3 text-xs text-gray-700">
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'hsl(0, 72%, 48%)' }} />
+                  <span className="text-gray-500">Most relevant</span>
+                </div>
+                <div className="flex-1 h-1 bg-gradient-to-r from-[#ef4444] via-[#f59e0b] to-[#8b5cf6] rounded-full" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-gray-500">Least relevant</span>
+                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'hsl(280, 72%, 48%)' }} />
+                </div>
               </div>
             </div>
           )}
+
         </>
       )}
     </div>
