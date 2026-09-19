@@ -11,6 +11,20 @@ client = Groq(api_key=api_key) if api_key else None
 MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
 
 
+def _extract_tldr(summary) -> str:
+    """
+    Paper.summary can be either:
+      - a str  (raw summary text from arxiv_client),
+      - a dict (post-extract_insights_batch, shape {"tldr": ..., "problem": ...}).
+    Return the best TL;DR string we can, or "" if none.
+    """
+    if isinstance(summary, str):
+        return summary
+    if isinstance(summary, dict):
+        return summary.get("tldr") or summary.get("summary") or ""
+    return ""
+
+
 def extract_insights_batch(papers):
     """
     Extracts insights for a batch of papers in a single LLM call.
@@ -100,7 +114,7 @@ def synthesize_results(papers_summaries):
 
     summary_text = "\n".join(
         f"Paper: {p.get('title', 'Unknown')}\n"
-        f"Summary: {p.get('summary', {}).get('tldr', '')}"
+        f"Summary: {_extract_tldr(p.get('summary'))}"
         for p in papers_summaries
     )
     prompt = (
@@ -124,6 +138,7 @@ def _sanitize_labels(raw) -> dict:
     if not isinstance(raw, dict):
         return {}
     return {str(k): str(v).strip()[:80] for k, v in raw.items() if str(v).strip()}
+
 
 def get_cluster_labels(clusters, topic: str = "") -> dict:
     """
@@ -184,51 +199,6 @@ def get_cluster_labels(clusters, topic: str = "") -> dict:
     except json.JSONDecodeError as e:
         print(f"Cluster labeling: JSON parse failed — {e}")
         return {}
-    except Exception as e:
-        print(f"Error during Groq cluster labeling: {e}")
-        return {}
-    """
-    Labels clusters in ONE batched Groq call.
-    clusters: {cid: [texts]}, {cid: text}, or a list of either.
-    Returns: {cid_str: label}. ALWAYS a dict — {} on any failure,
-    so main.py's invariant guard fills gaps with 'Cluster {cid}'.
-    """
-    if not client:
-        print("Cluster labeling skipped: GROQ_API_KEY missing")
-        return {}
-    if not clusters:
-        return {}
-
-    try:
-        pairs = clusters.items() if isinstance(clusters, dict) else enumerate(clusters)
-        items = []
-        for cid, texts in pairs:
-            blob = (
-                " | ".join(map(str, texts))
-                if isinstance(texts, (list, tuple))
-                else str(texts)
-            )
-            items.append(f"Cluster {cid}: {blob[:400]}")
-
-        prompt = (
-            f"Topic: {topic}\nBelow are clusters of research paper titles/abstracts. "
-            "For EACH cluster, produce a concise research-theme label (max 5 words).\n"
-            + "\n".join(items)
-            + '\n\nRespond with ONLY a JSON object mapping cluster number-as-string to label, '
-              'e.g. {"0": "Graph Embeddings"}'
-        )
-
-        completion = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": "You output only JSON objects."},
-                {"role": "user", "content": prompt},
-            ],
-            model=MODEL,
-            response_format={"type": "json_object"},
-            extra_body={"reasoning_effort": "low", "max_completion_tokens": 2048},
-        )
-        return _sanitize_labels(json.loads(completion.choices[0].message.content))
-
     except Exception as e:
         print(f"Error during Groq cluster labeling: {e}")
         return {}
