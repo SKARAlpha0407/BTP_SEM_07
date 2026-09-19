@@ -1,4 +1,3 @@
-
 {
   "name": "research-copilot-frontend",
   "version": "0.1.0",
@@ -10,21 +9,22 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "clsx": "latest",
+    "lucide-react": "latest",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
     "react-force-graph-2d": "latest",
-    "lucide-react": "latest",
-    "clsx": "latest",
     "tailwind-merge": "latest"
   },
   "devDependencies": {
-    "typescript": "latest",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "autoprefixer": "latest",
     "postcss": "latest",
     "tailwindcss": "latest",
-    "autoprefixer": "latest"
+    "typescript": "latest"
   }
 }
