@@ -1,0 +1,15 @@
+backend/.env
+.env
+*.env.local
+backend/.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+frontend_backup_*.tgz
+*.tgz
+.DS_Store

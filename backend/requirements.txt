@@ -1,0 +1,9 @@
+
+fastapi
+uvicorn
+arxiv
+sentence-transformers
+numpy
+requests
+python-dotenv
+pydantic
