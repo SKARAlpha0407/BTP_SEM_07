@@ -66,6 +66,11 @@ def rank_papers(query: str, papers: List):
     for i, paper in enumerate(papers):
         paper.relevance_score = float(scores[i])
 
+    _nq = _normalize(query)
+    for _p in papers:
+        if _normalize(_p.title) == _nq:
+            _p.relevance_score = 1.0
+
     def sort_key(p):
         norm_title = _normalize(p.title)
         if norm_title == norm_query:
@@ -97,6 +102,11 @@ def rank_papers_with_vectors(query: str, papers: List) -> tuple[list, list[list[
 
     for i, paper in enumerate(papers):
         paper.relevance_score = float(scores[i])
+
+    _nq = _normalize(query)
+    for _p in papers:
+        if _normalize(_p.title) == _nq:
+            _p.relevance_score = 1.0
 
     def sort_key(p):
         norm_title = _normalize(p.title)
@@ -160,6 +170,11 @@ def rank_with_cached_vectors(
 
     for i, p in enumerate(papers):
         p.relevance_score = float(scores[i])
+
+    _nq = _normalize(query)
+    for _p in papers:
+        if _normalize(_p.title) == _nq:
+            _p.relevance_score = 1.0
 
     def sort_key(p):
         norm_title = _normalize(p.title)
