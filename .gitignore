@@ -45,3 +45,8 @@ Thumbs.db
 # Dev backups from phased work
 *.pre_*
 *.bak
+venv-transcripts/
+verify_groq.py
+test_arxiv_client.py
+test_llm_service.py
+backend/app/verify_groq.py
