@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import traceback
 from groq import Groq
@@ -34,6 +35,24 @@ def _empty_insight(idx: int = -1) -> dict:
         "methods": "N/A",
         "benchmarks": "N/A",
     }
+
+
+_VALID_JSON_ESCAPE = re.compile(r'\\(?![\\"/u])')
+
+
+def _safe_json_loads(text: str):
+    """Parse JSON from an LLM response, tolerating unescaped LaTeX backslashes."""
+    if not text:
+        raise ValueError("empty content")
+    s = text.strip()
+    # Strip markdown fences if present
+    if s.startswith("```"):
+        s = s.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    # Always repair. JSON treats \b, \f, \n, \r, \t as valid escapes,
+    # which silently mangles LaTeX (\beta → backspace+eta, \frac → formfeed+rac,
+    # \nabla → newline+abla). Only \\, \", \/, and \u are unambiguously JSON.
+    s = _VALID_JSON_ESCAPE.sub(r'\\\\', s)
+    return json.loads(s)
 
 
 def extract_insights_batch(papers):
@@ -88,7 +107,7 @@ def extract_insights_batch(papers):
         if content.startswith("```"):
             content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 
-        data = json.loads(content)
+        data = _safe_json_loads(content)
 
         # Normalize: accept {"papers":[...]}, any single-list object, or index-keyed objects
         if isinstance(data, dict):
@@ -219,7 +238,7 @@ def get_cluster_labels(clusters, topic: str = "") -> dict:
         if content.startswith("```"):
             content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 
-        return _sanitize_labels(json.loads(content))
+        return _sanitize_labels(_safe_json_loads(content))
 
     except json.JSONDecodeError as e:
         print(f"Cluster labeling: JSON parse failed — {e}")

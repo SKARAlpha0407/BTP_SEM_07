@@ -7,3 +7,8 @@ numpy
 requests
 python-dotenv
 pydantic
+
+sqlalchemy>=2.0
+psycopg[binary]>=3.2
+pgvector>=0.3
+alembic>=1.13

@@ -74,6 +74,42 @@ def rank_papers(query: str, papers: List):
 
     return sorted(papers, key=sort_key, reverse=True)
 
+
+def rank_papers_with_vectors(query: str, papers: List) -> tuple[list, list[list[float]]]:
+    """Rank papers and return embeddings as Python lists of floats."""
+    if not papers:
+        return [], []
+
+    def _normalize(s: str) -> str:
+        import re
+        return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+
+    norm_query = _normalize(query)
+
+    model = _get_model()
+    query_emb = model.encode(query, convert_to_tensor=True)
+    abstracts = [p.abstract if p.abstract and p.abstract.strip() else "" for p in papers]
+
+    with _model_lock:
+        paper_embs = model.encode(abstracts, convert_to_tensor=True)
+
+    scores = util.cos_sim(query_emb, paper_embs)[0]
+
+    for i, paper in enumerate(papers):
+        paper.relevance_score = float(scores[i])
+
+    def sort_key(p):
+        norm_title = _normalize(p.title)
+        if norm_title == norm_query:
+            return (1, 0)
+        return (0, p.relevance_score or 0)
+
+    pairs = list(zip(papers, paper_embs))
+    ranked_pairs = sorted(pairs, key=lambda pv: sort_key(pv[0]), reverse=True)
+    ranked = [pv[0] for pv in ranked_pairs]
+    embeddings = [pv[1].tolist() for pv in ranked_pairs]
+    return ranked, embeddings
+
 def embed_batch(texts):
     """
     Public batch-embedding helper. Thread-safe, CPU-only, returns a CPU tensor.
@@ -84,3 +120,55 @@ def embed_batch(texts):
     model = _get_model()
     with _model_lock:
         return model.encode(texts, convert_to_tensor=True)
+
+
+def rank_with_cached_vectors(
+    query: str,
+    papers: List,
+    cached_vectors: dict,
+) -> tuple[list, list[list[float]]]:
+    """
+    Rank papers using cached vectors where available; encode only the rest.
+    cached_vectors maps arxiv_id -> list[float].
+    Returns (ranked_papers, ranked_vectors) aligned by index.
+    """
+    if not papers:
+        return [], []
+
+    def _normalize(s: str) -> str:
+        import re
+        return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+
+    model = _get_model()
+    query_emb = model.encode(query, convert_to_tensor=True)
+
+    vec_map = dict(cached_vectors)
+
+    new_papers = [p for p in papers if p.arxiv_id not in vec_map]
+    if new_papers:
+        abstracts = [p.abstract if p.abstract and p.abstract.strip() else "" for p in new_papers]
+        with _model_lock:
+            new_embs = model.encode(abstracts, convert_to_tensor=True)
+        for i, p in enumerate(new_papers):
+            vec_map[p.arxiv_id] = new_embs[i].tolist()
+
+    all_vecs = [vec_map[p.arxiv_id] for p in papers]
+
+    import torch
+    vec_tensor = torch.tensor(all_vecs)
+    scores = util.cos_sim(query_emb, vec_tensor)[0]
+
+    for i, p in enumerate(papers):
+        p.relevance_score = float(scores[i])
+
+    def sort_key(p):
+        norm_title = _normalize(p.title)
+        norm_query = _normalize(query)
+        if norm_title == norm_query:
+            return (1, 0)
+        return (0, p.relevance_score or 0)
+
+    ranked_pairs = sorted(zip(papers, all_vecs), key=lambda pv: sort_key(pv[0]), reverse=True)
+    ranked = [pv[0] for pv in ranked_pairs]
+    vectors = [pv[1] for pv in ranked_pairs]
+    return ranked, vectors

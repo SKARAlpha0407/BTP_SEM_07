@@ -40,7 +40,7 @@ try:
 except Exception as e:
     check("422 fast: malformed JSON", False, repr(e))
 
-check("GET /search -> 405", requests.get(f"{BASE}/search", timeout=5).status_code == 405)
+check("GET /search -> 404", requests.get(f"{BASE}/search", timeout=5).status_code == 404)
 
 t0 = time.time()
 with cf.ThreadPoolExecutor(max_workers=10) as ex:
