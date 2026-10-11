@@ -132,7 +132,8 @@ def search(req: SearchRequest):
                     )
                     top_score = rows[0][1] if rows else 0.0
                     strong = [(aid, sc) for aid, sc in rows if sc >= 0.35]
-                    if top_score >= 0.4 and len(strong) >= req.max_results:
+                    is_topic_query = len(topic.split()) <= 2
+                    if is_topic_query and top_score >= 0.4 and len(strong) >= req.max_results:
                         ids = [aid for aid, _ in strong]
                         hydrated = load_paper_objects(_s, ids)
                         score_by_id = dict(strong)
