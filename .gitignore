@@ -41,3 +41,7 @@ Thumbs.db
 .idea/
 .deployment_status/
 .ui_polish_backup/
+
+# Dev backups from phased work
+*.pre_*
+*.bak
