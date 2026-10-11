@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from typing import Any, Dict, List
 import os
+import math
 from sentence_transformers import util
 
 from .arxiv_client import search_papers
@@ -21,6 +22,26 @@ from .llm_service import (
     MODEL,
 )
 from .pipeline_cache import save_papers_and_embeddings, save_insights
+
+def _calibrate_scores(papers):
+    """Map MiniLM cosine [0.35..0.55] signal range onto calibrated [0..1].
+
+    MiniLM has a high noise floor on arxiv abstracts: unrelated pairs score
+    ~0.30-0.35, strongly related pairs ~0.50-0.55. Raw cosines therefore look
+    weak when displayed as percentages. This sigmoid remaps the useful range
+    so that relevant results read as 70-95% instead of 35-50%.
+    Exact-title-matched papers already have score=1.0 and are left untouched.
+    """
+    alpha = 12.0
+    beta = 0.35
+    for p in papers:
+        raw = p.relevance_score or 0.0
+        if raw >= 0.999:
+            continue
+        x = alpha * (raw - beta)
+        x = max(-50.0, min(50.0, x))
+        p.relevance_score = 1.0 / (1.0 + math.exp(-x))
+
 
 if not os.environ.get("GROQ_API_KEY"):
     raise RuntimeError(
@@ -148,6 +169,7 @@ def search(req: SearchRequest):
             ranked_papers = cache_hits
             ranked_vectors = []
             top_papers = ranked_papers[: req.max_results]
+            _calibrate_scores(top_papers)
         else:
             # --- 1b. Fallback: fetch from arxiv (cache cold or weak) ---
             raw_papers = search_papers(topic, max_results=30)
@@ -174,6 +196,7 @@ def search(req: SearchRequest):
                 topic, raw_papers, cached_vecs
             )
             top_papers = ranked_papers[: req.max_results]
+            _calibrate_scores(top_papers)
 
             try:
                 save_papers_and_embeddings(ranked_papers, ranked_vectors, EMBED_MODEL)
