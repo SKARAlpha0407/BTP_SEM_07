@@ -23,21 +23,26 @@ from .llm_service import (
 )
 from .pipeline_cache import save_papers_and_embeddings, save_insights
 
-def _calibrate_scores(papers):
-    """Map MiniLM cosine [0.35..0.55] signal range onto calibrated [0..1].
+def _calibrate_scores(papers, topic: str):
+    """Map MiniLM cosine onto a calibrated [0..1] score with additive keyword boosting."""
+    alpha = 10.0
+    is_short = len(topic.split()) <= 2
+    beta = 0.30 if is_short else 0.35
+    norm_topic = topic.strip().lower()
 
-    MiniLM has a high noise floor on arxiv abstracts: unrelated pairs score
-    ~0.30-0.35, strongly related pairs ~0.50-0.55. Raw cosines therefore look
-    weak when displayed as percentages. This sigmoid remaps the useful range
-    so that relevant results read as 70-95% instead of 35-50%.
-    Exact-title-matched papers already have score=1.0 and are left untouched.
-    """
-    alpha = 12.0
-    beta = 0.35
     for p in papers:
         raw = p.relevance_score or 0.0
+
+        # Exact title match pin
         if raw >= 0.999:
+            p.relevance_score = 1.0
             continue
+
+        # Additive keyword boost (preserves relative ranking)
+        norm_title = p.title.lower()
+        if norm_topic in norm_title:
+            raw = min(raw + 0.15, 0.99)
+
         x = alpha * (raw - beta)
         x = max(-50.0, min(50.0, x))
         p.relevance_score = 1.0 / (1.0 + math.exp(-x))
@@ -169,7 +174,7 @@ def search(req: SearchRequest):
             ranked_papers = cache_hits
             ranked_vectors = []
             top_papers = ranked_papers[: req.max_results]
-            _calibrate_scores(top_papers)
+            _calibrate_scores(top_papers, topic)
         else:
             # --- 1b. Fallback: fetch from arxiv (cache cold or weak) ---
             raw_papers = search_papers(topic, max_results=30)
@@ -196,7 +201,7 @@ def search(req: SearchRequest):
                 topic, raw_papers, cached_vecs
             )
             top_papers = ranked_papers[: req.max_results]
-            _calibrate_scores(top_papers)
+            _calibrate_scores(top_papers, topic)
 
             try:
                 save_papers_and_embeddings(ranked_papers, ranked_vectors, EMBED_MODEL)
