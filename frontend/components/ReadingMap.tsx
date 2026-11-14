@@ -1,149 +1,123 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import ForceGraph2D from 'react-force-graph-2d';
+'use client';
 
-type Node = {
+import React, { useMemo, useState, useCallback } from 'react';
+import ForceGraph3D from 'react-force-graph-3d';
+import * as THREE from 'three';
+
+interface GraphNode {
   id: number;
   title: string;
   val: number;
-  cluster?: string;
-};
+  cluster: string;
+  year: number;
+  short_label: string;
+  degree: number;
+}
 
-type Link = {
-  source: number | Node;
-  target: number | Node;
+interface GraphLink {
+  source: number;
+  target: number;
   weight: number;
-};
+}
 
-type GraphData = {
-  nodes: Node[];
-  links: Link[];
-};
+export default function ReadingMap({ data }: { data: { nodes: GraphNode[], links: GraphLink[] } }) {
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
 
-const CLUSTER_COLORS = [
-  '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444',
-  '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1',
-];
+  // Dynamically calculate the min and max years from the actual data
+  const { minYear, maxYear } = useMemo(() => {
+    const years = data.nodes.map(n => n.year).filter(y => y > 0);
+    return {
+      minYear: years.length ? Math.min(...years) : 2018,
+      maxYear: years.length ? Math.max(...years) : 2025,
+    };
+  }, [data.nodes]);
 
-export default function ReadingMap({ data }: { data: GraphData }) {
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const fgRef = useRef<any>(null);
-  const [dims, setDims] = useState({ width: 800, height: 500 });
-
-  useEffect(() => {
-    if (!fgRef.current) return;
-    fgRef.current.d3Force('charge')?.strength(-300);
-    fgRef.current.d3Force('link')?.distance(140);
-  }, [data]);
-
-
-  const sortedNodes = useMemo(() => {
-    if (!data?.nodes) return [];
-    return [...data.nodes].sort((a, b) => (b.val || 0) - (a.val || 0));
-  }, [data]);
-
-  const rankOf = (n: Node) => {
-    return sortedNodes.findIndex((sn) => sn.id === n.id);
-  };
-
-  const radiusOf = (n: Node) => {
-    const totalNodes = data?.nodes?.length || 0;
-    return 32 - (rankOf(n) / Math.max(totalNodes - 1, 1)) * 13;
-  };
-
-
-  const colorOf = (n: Node) => {
-    const totalNodes = data?.nodes?.length || 0;
-    const hue = (rankOf(n) / Math.max(totalNodes - 1, 1)) * 280;
-    return `hsl(${hue}, 72%, 48%)`;
-  };
-
-
-  const hasData = !!data && Array.isArray(data.nodes) && data.nodes.length > 0;
-
-
-  const yearColorScale = (year: number) => {
-    if (!year || year === 0) return '#9ca3af'; // fallback gray
-    const minYear = 1990;
-    const maxYear = 2025;
-    const t = Math.max(0, Math.min(1, (year - minYear) / (maxYear - minYear)));
-    // Gradient from #fcd34d (yellow) to #3b82f6 (blue)
-    const r = Math.round(252 + (59 - 252) * t);
-    const g = Math.round(211 + (130 - 211) * t);
-    const b = Math.round(77 + (246 - 77) * t);
+  // A vibrant gradient (Turbo/Plasma style) that maps to the actual year range
+  const yearColorScale = useCallback((year: number) => {
+    if (!year || year === 0) return '#9ca3af';
+    const t = Math.max(0, Math.min(1, (year - minYear) / Math.max(1, maxYear - minYear)));
+    // Gradient from Purple (old) -> Red -> Orange -> Yellow -> Green (new)
+    const r = Math.round(255 * Math.min(1, Math.max(0, 1.5 - Math.abs(t * 4 - 3))));
+    const g = Math.round(255 * Math.min(1, Math.max(0, 1.5 - Math.abs(t * 4 - 2))));
+    const b = Math.round(255 * Math.min(1, Math.max(0, 1.5 - Math.abs(t * 4 - 1))));
     return `rgb(${r}, ${g}, ${b})`;
-  };
+  }, [minYear, maxYear]);
 
   return (
-    <div
-      ref={wrapperRef}
-      className="w-full h-[500px] bg-gray-50 rounded-xl border border-gray-200 overflow-hidden relative"
-    >
-      {!hasData ? (
-        <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
-          No graph data
-        </div>
-      ) : (
-        <>
-          <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-600">
-            Reading map · {data.nodes.length} papers · hover to inspect
-          </div>
+    <div className="relative w-full h-[600px] bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="absolute top-4 left-4 z-10 bg-white/80 backdrop-blur border border-gray-200 px-3 py-1.5 rounded-md text-xs font-medium text-gray-600 shadow-sm">
+        Reading map · {data.nodes.length} papers · drag to rotate, scroll to zoom
+      </div>
 
-          <ForceGraph2D
+      <ForceGraph3D
         graphData={data}
-        nodeVal={(n: any) => 3 + (n.val || 0) * 15}
+        nodeLabel={(n: any) => `${n.title} (${n.short_label})`}
         nodeColor={(n: any) => yearColorScale(n.year)}
-        linkColor={(l: any) => `rgba(156, 163, 175, ${0.2 + (l.weight || 0.5) * 0.5})`}
-        linkWidth={(l: any) => 0.5 + (l.weight || 0) * 2}
-        nodeCanvasObject={(node: any, ctx: any, globalScale: number) => {
-          const label = node.short_label || node.title;
-          const fontSize = 12 / globalScale;
-          ctx.font = `${fontSize}px Sans-Serif`;
-          const textWidth = ctx.measureText(label).width;
-          const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2);
-          
-          // Draw label background
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-          ctx.fillRect(node.x - bckgDimensions[0] / 2, node.y - bckgDimensions[1] / 2, bckgDimensions[0], bckgDimensions[1]);
-          
-          // Draw label text
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillStyle = '#1f2937';
-          ctx.fillText(label, node.x, node.y);
-          
-          // Draw the node circle
-          const radius = 3 + (node.val || 0) * 15;
-          ctx.beginPath();
-          ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
-          ctx.fillStyle = yearColorScale(node.year);
-          ctx.fill();
-          ctx.lineWidth = 1 / globalScale;
-          ctx.strokeStyle = '#ffffff';
-          ctx.stroke();
+        linkColor={(l: any) => `rgba(156, 163, 175, ${0.2 + (l.weight || 0.5) * 0.3})`}
+        linkWidth={(l: any) => 0.5 + (l.weight || 0) * 1.5}
+        linkOpacity={0.4}
+        linkDirectionalParticles={2}
+        linkDirectionalParticleWidth={1.5}
+        linkDirectionalParticleSpeed={0.005}
+        onNodeClick={(node: any) => {
+          setSelectedNode(node);
+        }}
+        nodeThreeObject={(node: any) => {
+          const radius = 1.5 + (node.val || 0) * 6;
+          const geometry = new THREE.SphereGeometry(radius, 16, 16);
+          const material = new THREE.MeshLambertMaterial({
+            color: yearColorScale(node.year),
+            transparent: true,
+            opacity: 0.9,
+          });
+          const sphere = new THREE.Mesh(geometry, material);
+
+          // Create text label sprite
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            canvas.width = 256;
+            canvas.height = 64;
+            ctx.font = '24px Sans-Serif';
+            ctx.fillStyle = '#1f2937';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(node.short_label || '', 128, 32);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(20, 5, 1);
+            sprite.position.set(0, radius + 3, 0);
+
+            const group = new THREE.Group();
+            group.add(sphere);
+            group.add(sprite);
+            return group;
+          }
+          return sphere;
         }}
         d3AlphaDecay={0.02}
         d3VelocityDecay={0.3}
         cooldownTicks={100}
       />
 
-          {hasData && (
-            <div className="absolute bottom-3 left-3 z-10 bg-white/90 backdrop-blur border border-gray-200 rounded-lg p-3">
-              <div className="flex items-center gap-3 text-xs text-gray-700">
-                <div className="flex items-center gap-1.5">
-                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'hsl(0, 72%, 48%)' }} />
-                  <span className="text-gray-500">Most relevant</span>
-                </div>
-                <div className="flex-1 h-1 bg-gradient-to-r from-[#ef4444] via-[#f59e0b] to-[#8b5cf6] rounded-full" />
-                <div className="flex items-center gap-1.5">
-                  <span className="text-gray-500">Least relevant</span>
-                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'hsl(280, 72%, 48%)' }} />
-                </div>
-              </div>
-            </div>
-          )}
-
-        </>
-      )}
+      {/* Dynamic Legend */}
+      <div className="absolute bottom-4 left-4 z-10 bg-white/90 backdrop-blur border border-gray-200 rounded-md shadow-sm p-3 flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-gray-500">{minYear}</span>
+          <div className="w-24 h-2 rounded-full" style={{
+            background: `linear-gradient(to right, ${yearColorScale(minYear)}, ${yearColorScale(minYear + (maxYear-minYear)/2)}, ${yearColorScale(maxYear)})`
+          }} />
+          <span className="text-[10px] text-gray-500">{maxYear}</span>
+          <span className="text-[10px] font-medium text-gray-700 ml-1">Year</span>
+        </div>
+        <div className="flex items-center gap-2 text-[10px] text-gray-500">
+          <div className="w-2 h-2 rounded-full bg-gray-400" />
+          <div className="w-3.5 h-3.5 rounded-full bg-gray-400" />
+          <span className="ml-1">Node size = connections (degree)</span>
+        </div>
+      </div>
     </div>
   );
 }
