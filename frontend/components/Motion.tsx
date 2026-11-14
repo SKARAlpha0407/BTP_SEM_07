@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 /*
- * Motion primitives for Research Copilot. Everything settles into a still,
+ * Motion primitives for Kavosh. Everything settles into a still,
  * fully readable state, and prefers-reduced-motion (globals.css) skips straight
  * to it.
  */

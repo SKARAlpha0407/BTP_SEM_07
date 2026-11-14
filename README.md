@@ -1,4 +1,6 @@
-# Research Copilot
+# Kavosh
+
+*Kavosh (کاوش) is Persian for "exploration". Formerly Research Copilot.*
 
 AI-powered research agent for ML papers on arXiv: semantic (optionally hybrid)
 ranking, a persistent pgvector cache, LLM insight extraction, and a reading-map
