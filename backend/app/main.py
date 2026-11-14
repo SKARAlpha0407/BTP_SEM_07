@@ -140,6 +140,8 @@ class GraphNode(BaseModel):
     primary_category: str = ""
     degree: int = 0
     author_surnames: List[str] = []
+    arxiv_url: str = ""
+    pdf_url: str = ""
 
 class GraphLink(BaseModel):
     source: int
@@ -344,6 +346,8 @@ def search(req: SearchRequest):
                 "year": year,
                 "primary_category": cat,
                 "author_surnames": auths,
+                "arxiv_url": p.arxiv_url,
+                "pdf_url": p.pdf_url,
                 "val": p.relevance_score or 0,
                 "degree": 0,
                 "cluster": None
