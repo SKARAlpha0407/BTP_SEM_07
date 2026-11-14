@@ -1,4 +1,4 @@
-"""t-SNE map of paper embeddings, coloured by arXiv primary category.
+"""t-SNE map of paper embeddings, coloured by the arXiv category each paper was fetched for.
 
 The retrieval counterpart of the Sem-6 t-SNE analysis, drawn from real
 vectors. A silhouette score (cosine) quantifies how well each embedding model
@@ -17,8 +17,23 @@ import re
 
 import numpy as np
 
+from .build_dataset import DEFAULT_CATEGORIES
 from .data import load_corpus
 from .systems import DenseSystem
+
+
+def label_for(rec: dict, wanted: list[str]) -> str | None:
+    """The category a paper belongs to for the map, or None to drop it.
+
+    Uses the category it was fetched for when the corpus recorded one. Older
+    corpora only have arXiv's own categories, whose primary is often a
+    cross-listing (astro-ph.IM, cs.AR, ...); taking the first of the paper's
+    categories that was queried keeps the map to the requested classes.
+    """
+    if rec.get("query_category") in wanted:
+        return rec["query_category"]
+    cats = [rec.get("primary_category")] + list(rec.get("categories") or [])
+    return next((c for c in cats if c in wanted), None)
 
 
 def main() -> None:
@@ -26,6 +41,8 @@ def main() -> None:
     ap.add_argument("--corpus", default="eval/data/corpus.jsonl")
     ap.add_argument("--models", nargs="+", default=["all-MiniLM-L6-v2", "hash-ngram"])
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--categories", nargs="+", default=DEFAULT_CATEGORIES,
+                    help="classes to colour and score; papers in none of them are dropped")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", default="eval/results")
     args = ap.parse_args()
@@ -37,7 +54,9 @@ def main() -> None:
     import matplotlib.pyplot as plt
 
     corpus = load_corpus(args.corpus, args.limit)
-    labels = [r.get("primary_category") or (r.get("categories") or ["?"])[0] for r in corpus]
+    tagged = [(r, label_for(r, args.categories)) for r in corpus]
+    corpus = [r for r, c in tagged if c is not None]
+    labels = [c for _, c in tagged if c is not None]
     cats = sorted(set(labels))
     y = np.array([cats.index(c) for c in labels])
     os.makedirs(args.out, exist_ok=True)

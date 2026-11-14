@@ -49,6 +49,7 @@ def main() -> None:
                     "abstract": " ".join(r.summary.split()),
                     "categories": list(r.categories),
                     "primary_category": r.primary_category,
+                    "query_category": cat,
                     "published": r.published.strftime("%Y-%m-%d"),
                 }) + "\n")
                 got += 1
