@@ -1,5 +1,5 @@
-import json
 """Repository layer for paper data operations."""
+import json
 
 from datetime import datetime
 from typing import Any
@@ -114,19 +114,29 @@ def search_similar_with_ttl(
     query_vec: list[float],
     top_k: int = 20,
     max_age_hours: int = 12,
+    model_name: str | None = None,
 ) -> list[tuple[str, float]]:
-    """ANN search with time-to-live filter on papers.fetched_at."""
+    """ANN search with time-to-live filter on papers.fetched_at.
+
+    Pass `model_name` to compare only against vectors from the same embedding
+    model; vectors from different models are not comparable.
+    """
+    model_clause = "AND e.model_name = :model" if model_name else ""
     sql = text(
-        """
+        f"""
         SELECT e.arxiv_id, 1 - (e.embedding <=> CAST(:vec AS vector)) AS score
         FROM paper_embeddings e
         JOIN papers p ON p.arxiv_id = e.arxiv_id
         WHERE p.fetched_at > NOW() - (INTERVAL '1 hour' * :age)
+        {model_clause}
         ORDER BY e.embedding <=> CAST(:vec AS vector)
         LIMIT :k
         """
     )
-    result = session.execute(sql, {"vec": query_vec, "k": top_k, "age": max_age_hours})
+    params = {"vec": query_vec, "k": top_k, "age": max_age_hours}
+    if model_name:
+        params["model"] = model_name
+    result = session.execute(sql, params)
     return [(row[0], float(row[1])) for row in result]
 
 

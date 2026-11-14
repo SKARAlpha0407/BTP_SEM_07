@@ -223,7 +223,7 @@ erDiagram
 ```
 
 - `papers`: Canonical paper metadata, one row per arXiv ID. `embed_model` tracks which embedding model produced the vector.
-- `paper_embeddings`: Stores `vector(384)` embeddings with a **HNSW cosine index** for fast ANN search. Composite PK `(arxiv_id, embed_model)` allows multiple embedding models.
+- `paper_embeddings`: Stores `vector(384)` embeddings with a **HNSW cosine index** for fast ANN search. Primary key is `arxiv_id` with a `model_name` column, so one embedding model is cached per paper at a time; cache reads filter on `model_name`, so switching `EMBED_MODEL` never mixes vectors from different models.
 - `paper_insights`: Caches LLM-generated insights per paper per model. Composite PK `(arxiv_id, llm_model)`. Insight JSON contains `tldr`, `problem`, `methods`, `benchmarks`.
 
 **Frontend Consumption (`frontend/lib/api.ts`):**
@@ -453,4 +453,18 @@ tailwind-live
 ui-polish-partial
 ```
 
-DONE: report
+---
+
+## 12. Semester 6 Continuity and Evaluation (added)
+
+See `docs/SEM6_CONTINUITY.md` for the full mapping. In short, this version adds:
+
+- `backend/app/embedders.py`: one interface over contextual (SentenceTransformers), static (GloVe), subword (FastText, hashed n-grams) embedders, so the embedding is the only variable that changes, as in the Sem 6 design.
+- `backend/app/hybrid.py`: BM25 and Reciprocal Rank Fusion; enabled in the live pipeline with `HYBRID_RETRIEVAL=1`.
+- `backend/app/config.py`: every threshold is configurable; `eval/calibrate_thresholds.py` proposes measured values.
+- `backend/app/telemetry.py` + `GET /metrics`: p50/p95 latency per cache path, cache hit rate, LLM calls saved.
+- `backend/app/grounding.py`: flags LLM insight terms that are absent from the abstract.
+- `eval/`: dataset builder, the Sem 6 noise protocol applied to queries, Recall/MRR/nDCG benchmark with multi-seed confidence intervals, t-SNE map with silhouette scores.
+- `tests/`: 21 offline tests (pytest). `docker-compose.yml`: Postgres+pgvector and the API in one command.
+
+Benchmark numbers are produced by running the commands in the README; none are hard-coded in this report.

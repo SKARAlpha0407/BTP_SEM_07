@@ -50,3 +50,7 @@ verify_groq.py
 test_arxiv_client.py
 test_llm_service.py
 backend/app/verify_groq.py
+
+# Evaluation corpus is re-downloadable; results are kept as report evidence
+eval/data/
+graph_export.gexf

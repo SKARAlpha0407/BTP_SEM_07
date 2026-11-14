@@ -165,6 +165,15 @@ export default function Home() {
                       </span>
                     </div>
                     <h4 className="font-semibold text-sm leading-snug mb-2">{p.title}</h4>
+                    {(p.matched_terms?.length ?? 0) > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-2" title="Query terms found in this paper">
+                        {p.matched_terms!.map((t) => (
+                          <span key={t} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
                       <div
                         className="bg-blue-500 h-full"
@@ -233,6 +242,12 @@ export default function Home() {
                         </div>
                       </div>
                       <BenchmarksPanel benchmarks={selectedPaper.summary?.benchmarks} />
+                      {(selectedPaper.summary?.grounding?.unsupported?.length ?? 0) > 0 && (
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3">
+                          Check against the abstract — these terms in the AI summary do not appear in it:{' '}
+                          {selectedPaper.summary!.grounding!.unsupported.join(', ')}
+                        </p>
+                      )}
                     </div>
                   </div>
                 ) : (
