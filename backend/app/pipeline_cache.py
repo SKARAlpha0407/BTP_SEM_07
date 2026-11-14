@@ -50,6 +50,10 @@ def save_insights(
     session = SessionLocal()
     try:
         for arxiv_id, insight in pairs:
+            # Do not cache failed LLM extractions
+            if not insight or insight.get("tldr") in ("Error", "N/A", None) or "error" in insight:
+                logger.warning(f"Skipping cache write for {arxiv_id} due to failed LLM extraction")
+                continue
             upsert_insight(session, arxiv_id, llm_model, insight)
         session.commit()
     except Exception:
