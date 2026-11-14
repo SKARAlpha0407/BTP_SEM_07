@@ -1,1 +1,125 @@
 @import "tailwindcss";
+
+/*
+ * Research Copilot design tokens. Rules and rationale:
+ * .claude/skills/research-copilot-ui/SKILL.md
+ * Light values on :root, dark values under prefers-color-scheme (and an
+ * explicit data-theme override). Components use the Tailwind names below
+ * (bg-page, text-ink, border-line, ...), never raw colours.
+ */
+:root {
+  --page: #f6f7f8;
+  --surface: #ffffff;
+  --surface-2: #eef0f3;
+  --line: #e1e4e9;
+  --ink: #14171c;
+  --ink-2: #525866;
+  --muted: #666c7a;
+  --accent: #1c5cab;
+  --accent-ink: #ffffff;
+  --mark: #fde7a6;
+  --warn: #8a5a00;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0f1114;
+    --surface: #16191e;
+    --surface-2: #1d2127;
+    --line: #272c33;
+    --ink: #e6e8eb;
+    --ink-2: #b1b7c2;
+    --muted: #8d93a1;
+    --accent: #5598e7;
+    --accent-ink: #0f1114;
+    --mark: #5a4613;
+    --warn: #f0b44c;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --page: #0f1114;
+  --surface: #16191e;
+  --surface-2: #1d2127;
+  --line: #272c33;
+  --ink: #e6e8eb;
+  --ink-2: #b1b7c2;
+  --muted: #8d93a1;
+  --accent: #5598e7;
+  --accent-ink: #0f1114;
+  --mark: #5a4613;
+  --warn: #f0b44c;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-mark: var(--mark);
+  --color-warn: var(--warn);
+
+  /* Set by next/font in pages/_app.tsx */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: var(--font-source-serif), "Iowan Old Style", Georgia, serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+}
+
+@layer base {
+html,
+body {
+  background: var(--page);
+  color: var(--ink);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The search box shows focus on its frame, not on the input inside it */
+input[role="searchbox"]:focus-visible,
+form[role="search"] input:focus-visible {
+  outline: none;
+}
+
+::selection {
+  background: var(--mark);
+  color: var(--ink);
+}
+
+/* A highlighter stroke across the lower part of the line, not a solid block */
+mark {
+  background: linear-gradient(transparent 55%, var(--mark) 55%, var(--mark) 92%, transparent 92%);
+  color: inherit;
+  padding: 0 1px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
+}

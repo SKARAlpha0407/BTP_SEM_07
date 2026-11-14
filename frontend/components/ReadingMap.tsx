@@ -1,14 +1,23 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph3D from 'react-force-graph-3d';
 import * as THREE from 'three';
+import { X } from 'lucide-react';
+
+/*
+ * Reading map. Design rules: .claude/skills/research-copilot-ui/SKILL.md
+ * - Year is ordered, so it is one hue (blue) on a light->dark ramp, never a rainbow.
+ * - Size = number of connections. Labels only where they help: the ranked
+ *   results and whatever is connected to the selection.
+ * - Nothing moves on its own: layout is computed before the first frame.
+ */
 
 interface GraphNode {
   id: number;
   title: string;
   val: number;
-  // Optional so older responses (and index.tsx's narrower type) still fit
+  // Optional so older responses (and the narrower type in lib/api.ts) still fit
   cluster?: string | null;
   year?: number;
   short_label?: string;
@@ -24,17 +33,123 @@ interface GraphLink {
   weight: number;
 }
 
+type Props = {
+  data: { nodes: GraphNode[]; links: GraphLink[] };
+  /** Titles of the ranked results; these keep a permanent label and ring. */
+  rankedTitles?: string[];
+  /** Title selected elsewhere (the ranked list); the map follows it. */
+  selectedTitle?: string | null;
+  /** Called when a node is picked in the map. */
+  onSelectTitle?: (title: string | null) => void;
+};
+
 const endId = (end: number | GraphNode) => (typeof end === 'object' ? end.id : end);
 
-export default function ReadingMap({ data }: { data: { nodes: GraphNode[], links: GraphLink[] } }) {
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+// Blue ramp from the validated dataviz palette (steps 200..650).
+const BLUE = ['#9ec5f4', '#86b6ef', '#6da7ec', '#5598e7', '#3987e5', '#2a78d6', '#256abf', '#1c5cab', '#184f95', '#104281'];
+// Old -> new. On light surfaces newer is darker; on dark surfaces newer is lighter.
+const RAMP_LIGHT = BLUE.slice(1); // 250 .. 650
+const RAMP_DARK = BLUE.slice(0, 9).reverse(); // 600 .. 200
 
-  // The 3D canvas sizes itself to the window unless told otherwise, so track
-  // the container and hand it the real width and height.
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const [dims, setDims] = useState({ width: 0, height: 0 });
+function mix(a: string, b: string, t: number) {
+  const pa = parseInt(a.slice(1), 16);
+  const pb = parseInt(b.slice(1), 16);
+  const ch = (p: number, s: number) => (p >> s) & 255;
+  const c = (s: number) => Math.round(ch(pa, s) + (ch(pb, s) - ch(pa, s)) * t);
+  return `#${((c(16) << 16) | (c(8) << 8) | c(0)).toString(16).padStart(6, '0')}`;
+}
+
+function rampAt(ramp: string[], t: number) {
+  const x = Math.max(0, Math.min(1, t)) * (ramp.length - 1);
+  const i = Math.min(ramp.length - 2, Math.floor(x));
+  return mix(ramp[i], ramp[i + 1], x - i);
+}
+
+type Tokens = { surface: string; line: string; ink2: string; muted: string; accent: string; font: string; dark: boolean };
+
+/** Reads the design tokens from CSS so the WebGL scene matches the page theme. */
+function useTokens(el: React.RefObject<HTMLElement | null>): Tokens | null {
+  const [tokens, setTokens] = useState<Tokens | null>(null);
   useEffect(() => {
-    const el = wrapperRef.current;
+    const read = () => {
+      const node = el.current;
+      if (!node) return;
+      const cs = getComputedStyle(node);
+      const v = (name: string) => cs.getPropertyValue(name).trim();
+      setTokens({
+        surface: v('--surface'),
+        line: v('--line'),
+        ink2: v('--ink-2'),
+        muted: v('--muted'),
+        accent: v('--accent'),
+        font: cs.fontFamily,
+        dark: cs.colorScheme.includes('dark'),
+      });
+    };
+    read();
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    mq.addEventListener('change', read);
+    const mo = new MutationObserver(read);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => {
+      mq.removeEventListener('change', read);
+      mo.disconnect();
+    };
+  }, [el]);
+  return tokens;
+}
+
+function ringSprite(color: string, radius: number, width: number) {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2 - width, 0, Math.PI * 2);
+  ctx.stroke();
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthWrite: false, transparent: true }),
+  );
+  const s = radius * 2 + 3;
+  sprite.scale.set(s, s, 1);
+  return sprite;
+}
+
+function labelSprite(text: string, color: string, font: string, weight: number) {
+  const scale = 3; // draw at 3x so labels stay sharp when zoomed
+  const fontSize = 13 * scale;
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d')!;
+  ctx.font = `${weight} ${fontSize}px ${font}`;
+  const w = Math.ceil(ctx.measureText(text).width) + 8 * scale;
+  canvas.width = w;
+  canvas.height = fontSize * 1.6;
+  ctx.font = `${weight} ${fontSize}px ${font}`;
+  ctx.fillStyle = color;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 4 * scale, canvas.height / 2);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true }));
+  const h = 5.5;
+  sprite.scale.set((w / canvas.height) * h, h, 1);
+  return sprite;
+}
+
+export default function ReadingMap({ data, rankedTitles = [], selectedTitle, onSelectTitle }: Props) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const fgRef = useRef<any>(null);
+  const tokens = useTokens(wrapperRef);
+  const [dims, setDims] = useState({ width: 0, height: 0 });
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [cluster, setCluster] = useState<string | null>(null);
+
+  // The 3D canvas sizes itself to the window unless told otherwise.
+  useEffect(() => {
+    const el = canvasRef.current;
     if (!el) return;
     const measure = () => setDims({ width: el.clientWidth, height: el.clientHeight });
     measure();
@@ -43,209 +158,297 @@ export default function ReadingMap({ data }: { data: { nodes: GraphNode[], links
     return () => ro.disconnect();
   }, []);
 
-  // Dynamically calculate the min and max years from the actual data
+  const byId = useMemo(() => new Map(data.nodes.map((n) => [n.id, n])), [data.nodes]);
+  const ranked = useMemo(() => new Set(rankedTitles), [rankedTitles]);
+
+  // Follow selections made in the ranked list.
+  useEffect(() => {
+    if (selectedTitle === undefined) return;
+    const hit = data.nodes.find((n) => n.title === selectedTitle);
+    setSelectedId(hit ? hit.id : null);
+  }, [selectedTitle, data.nodes]);
+
   const { minYear, maxYear } = useMemo(() => {
-    const years = data.nodes.map(n => n.year ?? 0).filter(y => y > 0);
+    const years = data.nodes.map((n) => n.year ?? 0).filter((y) => y > 0);
     return {
-      minYear: years.length ? Math.min(...years) : 2018,
-      maxYear: years.length ? Math.max(...years) : 2025,
+      minYear: years.length ? Math.min(...years) : 0,
+      maxYear: years.length ? Math.max(...years) : 0,
     };
   }, [data.nodes]);
 
-  // A vibrant gradient (Turbo/Plasma style) that maps to the actual year range
-  const yearColorScale = useCallback((year?: number) => {
-    if (!year || year === 0) return '#9ca3af';
-    const t = Math.max(0, Math.min(1, (year - minYear) / Math.max(1, maxYear - minYear)));
-    // Gradient from Purple (old) -> Red -> Orange -> Yellow -> Green (new)
-    const r = Math.round(255 * Math.min(1, Math.max(0, 1.5 - Math.abs(t * 4 - 3))));
-    const g = Math.round(255 * Math.min(1, Math.max(0, 1.5 - Math.abs(t * 4 - 2))));
-    const b = Math.round(255 * Math.min(1, Math.max(0, 1.5 - Math.abs(t * 4 - 1))));
-    return `rgb(${r}, ${g}, ${b})`;
-  }, [minYear, maxYear]);
+  const maxDegree = useMemo(() => Math.max(1, ...data.nodes.map((n) => n.degree ?? 0)), [data.nodes]);
 
-  // Papers linked to the selected one, strongest link first
+  const clusters = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const n of data.nodes) if (n.cluster) counts.set(n.cluster, (counts.get(n.cluster) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [data.nodes]);
+
+  // Neighbours of the selection, strongest link first.
   const neighbours = useMemo(() => {
-    if (!selectedNode) return [];
-    const byId = new Map(data.nodes.map(n => [n.id, n]));
+    if (selectedId === null) return [];
     const out: { node: GraphNode; weight: number }[] = [];
     for (const l of data.links) {
       const s = endId(l.source);
       const t = endId(l.target);
-      const other = s === selectedNode.id ? t : t === selectedNode.id ? s : null;
+      const other = s === selectedId ? t : t === selectedId ? s : null;
       const node = other === null ? undefined : byId.get(other);
       if (node) out.push({ node, weight: l.weight || 0 });
     }
     return out.sort((a, b) => b.weight - a.weight);
-  }, [selectedNode, data.nodes, data.links]);
+  }, [selectedId, data.links, byId]);
+  const neighbourIds = useMemo(() => new Set(neighbours.map((n) => n.node.id)), [neighbours]);
+
+  const ramp = tokens?.dark ? RAMP_DARK : RAMP_LIGHT;
+  const yearColor = useCallback(
+    (year?: number) => {
+      if (!year || !tokens) return tokens?.muted || '#8d93a1';
+      const t = maxYear > minYear ? (year - minYear) / (maxYear - minYear) : 1;
+      return rampAt(ramp, t);
+    },
+    [ramp, minYear, maxYear, tokens],
+  );
+
+  const isActive = useCallback(
+    (n: GraphNode) => {
+      if (selectedId !== null) return n.id === selectedId || neighbourIds.has(n.id);
+      if (cluster) return n.cluster === cluster;
+      return true;
+    },
+    [selectedId, neighbourIds, cluster],
+  );
+
+  const radiusOf = (n: GraphNode) => 1.8 + Math.sqrt(n.degree ?? 0) * 1.15;
+
+  const nodeObject = useCallback(
+    (raw: object) => {
+      const n = raw as GraphNode;
+      const group = new THREE.Group();
+      if (!tokens) return group;
+      const active = isActive(n);
+      const r = radiusOf(n);
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(r, 20, 20),
+        new THREE.MeshBasicMaterial({
+          color: yearColor(n.year),
+          transparent: true,
+          opacity: active ? 1 : 0.16,
+        }),
+      );
+      group.add(sphere);
+
+      const isSelected = n.id === selectedId;
+      const isRanked = ranked.has(n.title);
+      if (isSelected) group.add(ringSprite(tokens.accent, r, 9));
+      else if (isRanked && active) group.add(ringSprite(tokens.ink2, r, 4));
+
+      const showLabel = active && (isSelected || isRanked || neighbourIds.has(n.id));
+      if (showLabel && n.short_label) {
+        const label = labelSprite(n.short_label, tokens.ink2, tokens.font, isSelected ? 600 : 500);
+        label.position.set(0, r + 3.2, 0);
+        group.add(label);
+      }
+      return group;
+    },
+    [tokens, isActive, yearColor, selectedId, ranked, neighbourIds],
+  );
+
+  const linkColor = useCallback(
+    (raw: object) => {
+      if (!tokens) return '#888';
+      const l = raw as GraphLink;
+      if (selectedId !== null) {
+        const touches = endId(l.source) === selectedId || endId(l.target) === selectedId;
+        return touches ? tokens.accent : tokens.line;
+      }
+      return tokens.line;
+    },
+    [tokens, selectedId],
+  );
+
+  const select = (n: GraphNode | null) => {
+    setSelectedId(n ? n.id : null);
+    onSelectTitle?.(n ? n.title : null);
+  };
+
+  const selected = selectedId !== null ? byId.get(selectedId) : undefined;
+
+  // Frame the connected papers. Isolated ones can drift far out and would
+  // otherwise shrink the whole map to a dot.
+  // Frame the connected papers from their laid-out positions. Isolated papers
+  // can drift far out and would shrink the map to a dot. Only after the
+  // layout exists: fitting earlier frames a single point.
+  const laidOut = useRef(false);
+  const fit = useCallback(() => {
+    const fg = fgRef.current;
+    if (!laidOut.current || !fg) return;
+    type P = GraphNode & { x?: number; y?: number; z?: number };
+    const placed = (data.nodes as P[]).filter((n) => Number.isFinite(n.x) && Number.isFinite(n.y) && Number.isFinite(n.z));
+    const linked = placed.filter((n) => (n.degree ?? 0) > 0);
+    const pts = linked.length ? linked : placed;
+    if (!pts.length) return;
+    const c = { x: 0, y: 0, z: 0 };
+    for (const n of pts) { c.x += n.x!; c.y += n.y!; c.z += n.z!; }
+    c.x /= pts.length; c.y /= pts.length; c.z /= pts.length;
+    let r = 1;
+    for (const n of pts) r = Math.max(r, Math.hypot(n.x! - c.x, n.y! - c.y, n.z! - c.z) + radiusOf(n) + 6);
+    const cam = fg.camera() as THREE.PerspectiveCamera;
+    const vFov = THREE.MathUtils.degToRad(cam.fov);
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * cam.aspect);
+    const dist = r / Math.sin(Math.min(vFov, hFov) / 2);
+    fg.cameraPosition({ x: c.x, y: c.y, z: c.z + dist }, c, 0);
+  }, [data.nodes]);
+  useEffect(() => {
+    laidOut.current = false;
+  }, [data]);
+  useEffect(() => {
+    fit();
+  }, [fit, dims.width, dims.height]);
+  const onLayoutDone = useCallback(() => {
+    laidOut.current = true;
+    fit();
+  }, [fit]);
 
   return (
-    <div ref={wrapperRef} className="relative w-full h-full min-h-[320px] bg-transparent overflow-hidden">
-      <div className="absolute top-3 left-3 z-10 bg-white/5 border border-white/10 text-zinc-300 backdrop-blur-md px-3 py-1.5 rounded-full text-[11px] font-medium tracking-wide">
-        Reading map <span className="text-zinc-500">·</span> {data.nodes.length} papers{' '}
-        <span className="text-zinc-500">· drag to rotate, scroll to zoom</span>
+    <div ref={wrapperRef} className="flex h-full min-h-0 flex-col bg-surface">
+      <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-line px-4">
+        <p className="text-[13px] font-medium text-ink">
+          Reading map
+          <span className="ml-2 font-mono text-[12px] font-normal text-muted tabular-nums">
+            {data.nodes.length} papers · {data.links.length} links
+          </span>
+        </p>
+        <p className="hidden text-[12px] text-muted sm:block">Drag to rotate · scroll to zoom · click a paper</p>
       </div>
 
-      {dims.width > 0 && (
-      <ForceGraph3D
-        graphData={data}
-        width={dims.width}
-        height={dims.height}
-        backgroundColor="rgba(0,0,0,0)"
-        showNavInfo={false}
-        nodeLabel={(n: any) => `${n.title} (${n.short_label})`}
-        nodeColor={(n: any) => yearColorScale(n.year)}
-        linkColor={(l: any) => `rgba(161, 161, 170, ${0.25 + (l.weight || 0.5) * 0.35})`}
-        linkWidth={(l: any) => 0.5 + (l.weight || 0) * 1.5}
-        linkOpacity={0.4}
-        onNodeClick={(node: any) => {
-          setSelectedNode(node);
-        }}
-        onBackgroundClick={() => setSelectedNode(null)}
-        nodeThreeObject={(node: any) => {
-          const radius = 1.5 + (node.val || 0) * 6;
-          const geometry = new THREE.SphereGeometry(radius, 16, 16);
-          const material = new THREE.MeshLambertMaterial({
-            color: yearColorScale(node.year),
-            transparent: true,
-            opacity: 0.9,
-          });
-          const sphere = new THREE.Mesh(geometry, material);
+      <div ref={canvasRef} className="relative min-h-[320px] flex-1 overflow-hidden">
+        {tokens && dims.width > 0 && (
+          <ForceGraph3D
+            ref={fgRef}
+            graphData={data}
+            width={dims.width}
+            height={dims.height}
+            backgroundColor={tokens.surface}
+            showNavInfo={false}
+            nodeLabel={(n: object) => (n as GraphNode).title}
+            nodeThreeObject={nodeObject}
+            linkColor={linkColor}
+            linkOpacity={1}
+            linkWidth={0}
+            onNodeClick={(n: object) => select(n as GraphNode)}
+            onBackgroundClick={() => select(null)}
+            d3AlphaDecay={0.02}
+            d3VelocityDecay={0.3}
+            warmupTicks={400}
+            cooldownTicks={0}
+            enableNodeDrag={false}
+            onEngineStop={onLayoutDone}
+          />
+        )}
+      </div>
 
-          // Create text label sprite
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            canvas.width = 256;
-            canvas.height = 64;
-            ctx.font = '24px Sans-Serif';
-            ctx.fillStyle = '#e4e4e7';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(node.short_label || '', 128, 32);
-
-            const texture = new THREE.CanvasTexture(canvas);
-            const spriteMaterial = new THREE.SpriteMaterial({ map: texture, depthTest: false });
-            const sprite = new THREE.Sprite(spriteMaterial);
-            sprite.scale.set(20, 5, 1);
-            sprite.position.set(0, radius + 3, 0);
-
-            const group = new THREE.Group();
-            group.add(sphere);
-            group.add(sprite);
-            return group;
-          }
-          return sphere;
-        }}
-        d3AlphaDecay={0.02}
-        d3VelocityDecay={0.3}
-        // No animation: run the whole layout before the first frame (alpha
-        // decays to its floor in ~340 ticks at 0.02), then keep it still.
-        // Node dragging would restart the simulation, so it is off;
-        // rotate and zoom still work.
-        warmupTicks={400}
-        cooldownTicks={0}
-        enableNodeDrag={false}
-      />
-      )}
-
-      {/* Details panel for the clicked paper */}
-      {selectedNode && (
-        <aside className="absolute top-4 right-4 bottom-4 z-10 w-72 max-w-[calc(100%-2rem)] bg-zinc-950/80 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl shadow-black/50 flex flex-col overflow-hidden">
-          <div className="flex items-start gap-2 p-3 border-b border-white/10">
-            <span
-              className="mt-1 w-3 h-3 shrink-0 rounded-full"
-              style={{ background: yearColorScale(selectedNode.year) }}
-            />
-            <div className="min-w-0 flex-1">
-              <h3 className="text-sm font-semibold text-zinc-100 leading-snug">{selectedNode.title}</h3>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                {selectedNode.short_label || 'Unknown author'}
-                {selectedNode.year && !(selectedNode.short_label || '').includes(String(selectedNode.year))
-                  ? ` · ${selectedNode.year}` : ''}
-              </p>
+      {/* Legend and cluster filter, or the selected paper's neighbourhood */}
+      <div className="max-h-[45%] shrink-0 overflow-y-auto border-t border-line">
+        {selected ? (
+          <section className="px-4 py-3">
+            <div className="flex items-start gap-3">
+              <span
+                className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ background: yearColor(selected.year) }}
+                aria-hidden
+              />
+              <div className="min-w-0 flex-1">
+                <h3 className="font-serif text-[15px] font-semibold leading-snug text-ink">{selected.title}</h3>
+                <p className="mt-1 font-mono text-[12px] text-muted">
+                  {[selected.short_label, selected.primary_category].filter(Boolean).join(' · ')}
+                  {' · '}
+                  {selected.degree ?? neighbours.length} links
+                </p>
+                {selected.cluster && <p className="mt-0.5 text-[12px] text-ink-2">{selected.cluster}</p>}
+              </div>
+              <button
+                type="button"
+                onClick={() => select(null)}
+                aria-label="Clear selection"
+                className="-mr-1 rounded-sm p-1 text-muted transition-colors duration-[120ms] hover:bg-surface-2 hover:text-ink"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setSelectedNode(null)}
-              aria-label="Close details"
-              className="shrink-0 text-zinc-500 hover:text-zinc-200 text-lg leading-none px-1 transition-colors"
-            >
-              ×
-            </button>
-          </div>
 
-          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 px-3 py-2.5 text-xs border-b border-white/10">
-            {selectedNode.primary_category && (
-              <>
-                <dt className="text-zinc-500">Category</dt>
-                <dd className="text-zinc-200">{selectedNode.primary_category}</dd>
-              </>
-            )}
-            {selectedNode.cluster && (
-              <>
-                <dt className="text-zinc-500">Cluster</dt>
-                <dd className="text-zinc-200">{selectedNode.cluster}</dd>
-              </>
-            )}
-            <dt className="text-zinc-500">Connections</dt>
-            <dd className="text-zinc-200">{selectedNode.degree ?? neighbours.length}</dd>
-            {selectedNode.author_surnames && selectedNode.author_surnames.length > 0 && (
-              <>
-                <dt className="text-zinc-500">Authors</dt>
-                <dd className="text-zinc-200">{selectedNode.author_surnames.join(', ')}</dd>
-              </>
-            )}
-          </dl>
-
-          <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2.5">
-            <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-wide mb-1.5">
-              Connected papers
+            <p className="mb-1 mt-3 text-[11px] font-medium uppercase tracking-[0.06em] text-muted">
+              Most similar
             </p>
             {neighbours.length === 0 ? (
-              <p className="text-xs text-zinc-500">No links to other papers in this map.</p>
+              <p className="text-[13px] text-muted">No links to other papers in this map.</p>
             ) : (
-              <ul className="flex flex-col gap-1">
-                {neighbours.map(({ node, weight }) => (
+              <ul className="-mx-2">
+                {neighbours.slice(0, 8).map(({ node, weight }) => (
                   <li key={node.id}>
                     <button
                       type="button"
-                      onClick={() => setSelectedNode(node)}
-                      className="w-full text-left rounded-md px-2 py-1.5 hover:bg-white/5 flex items-start gap-2 transition-colors"
+                      onClick={() => select(node)}
+                      className="flex w-full items-baseline gap-3 rounded-sm px-2 py-1.5 text-left transition-colors duration-[120ms] hover:bg-surface-2"
                     >
-                      <span
-                        className="mt-1 w-2 h-2 shrink-0 rounded-full"
-                        style={{ background: yearColorScale(node.year) }}
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-xs text-zinc-200 leading-snug line-clamp-2">{node.title}</span>
-                        <span className="block text-[10px] text-zinc-500">
-                          {node.short_label ? `${node.short_label} · ` : ''}similarity {weight.toFixed(2)}
-                        </span>
+                      <span className="w-9 shrink-0 font-mono text-[12px] text-muted tabular-nums">
+                        {weight.toFixed(2)}
                       </span>
+                      <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{node.title}</span>
+                      <span className="shrink-0 font-mono text-[11px] text-muted">{node.short_label}</span>
                     </button>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
-        </aside>
-      )}
+          </section>
+        ) : (
+          <section className="flex flex-col gap-3 px-4 py-3">
+            <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-[12px]">
+              <dt className="text-muted">Colour</dt>
+              <dd className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-muted tabular-nums">{minYear || '—'}</span>
+                <span
+                  className="h-2 w-28 rounded-sm"
+                  style={{ background: `linear-gradient(to right, ${ramp.join(', ')})` }}
+                  aria-hidden
+                />
+                <span className="font-mono text-muted tabular-nums">{maxYear || '—'}</span>
+                <span className="text-ink-2">publication year</span>
+              </dd>
+              <dt className="text-muted">Size</dt>
+              <dd className="text-ink-2">links to other papers (most: {maxDegree})</dd>
+              <dt className="text-muted">Ring</dt>
+              <dd className="text-ink-2">one of your ranked results</dd>
+            </dl>
 
-      {/* Dynamic Legend */}
-      <div className="absolute bottom-3 left-3 z-10 bg-white/5 border border-white/10 text-zinc-300 backdrop-blur-md rounded-xl p-3 flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-zinc-400 tabular-nums">{minYear}</span>
-          <div className="w-24 h-2 rounded-full" style={{
-            background: `linear-gradient(to right, ${yearColorScale(minYear)}, ${yearColorScale(minYear + (maxYear-minYear)/2)}, ${yearColorScale(maxYear)})`
-          }} />
-          <span className="text-[10px] text-zinc-400 tabular-nums">{maxYear}</span>
-          <span className="text-[10px] font-medium text-zinc-300 ml-1">Year</span>
-        </div>
-        <div className="flex items-center gap-2 text-[10px] text-zinc-400">
-          <div className="w-2 h-2 rounded-full bg-zinc-500" />
-          <div className="w-3.5 h-3.5 rounded-full bg-zinc-500" />
-          <span className="ml-1">Node size = connections (degree)</span>
-        </div>
+            {clusters.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.06em] text-muted">Clusters</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {clusters.map(([name, count]) => {
+                    const on = cluster === name;
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setCluster(on ? null : name)}
+                        className={`rounded-sm border px-2 py-1 text-[12px] transition-colors duration-[120ms] ${
+                          on
+                            ? 'border-accent bg-accent text-accent-ink'
+                            : 'border-line text-ink-2 hover:bg-surface-2 hover:text-ink'
+                        }`}
+                      >
+                        {name}
+                        <span className={`ml-1.5 font-mono tabular-nums ${on ? '' : 'text-muted'}`}>{count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
       </div>
     </div>
   );
