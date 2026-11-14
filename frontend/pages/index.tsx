@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 import { AlertTriangle, ArrowUpRight, Check, Info } from 'lucide-react';
-import { Paper, SearchResponse } from '../lib/api';
+import { Paper, SearchResponse, backendHint, getApiBase } from '../lib/api';
 import { Cursor, PixelMark, PixelMeter, PixelProgress, Pixels, RevealWords, ScrollInk } from '../components/Motion';
 
 /*
@@ -20,8 +20,6 @@ type BenchmarkRow = {
 };
 
 type Health = { status: string; embed_model?: string; llm_model?: string; hybrid_retrieval?: boolean };
-
-const API_BASE = 'http://localhost:8000';
 
 const EXAMPLES = [
   'retrieval augmented generation',
@@ -56,7 +54,7 @@ export default function Home() {
   useEffect(() => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 3000);
-    fetch(`${API_BASE}/health`, { signal: ctrl.signal })
+    fetch(`${getApiBase()}/health`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((h: Health) => setHealth(h))
       .catch(() => setHealth('offline'))
@@ -84,7 +82,7 @@ export default function Home() {
         await new Promise((r) => setTimeout(r, 400));
       }
 
-      const res = await fetch(`${API_BASE}/search`, {
+      const res = await fetch(`${getApiBase()}/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic: trimmed, max_results: 5 }),
@@ -115,7 +113,7 @@ export default function Home() {
       setError(
         err instanceof Error
           ? err.message
-          : 'Search failed. Ensure backend is running on port 8000.'
+          : 'Search failed. The search service did not respond.'
       );
     } finally {
       setLoading(false);
@@ -177,8 +175,7 @@ export default function Home() {
                 <>
                   <span className="font-mono text-[13px]">{error}</span>
                   <br />
-                  Check that the backend is running on port 8000 (<code className="font-mono">./dev.sh</code> starts it),
-                  then search again.
+                  {backendHint().long}
                 </>
               }
               action={
@@ -356,7 +353,7 @@ function StatusBar({ health }: { health: Health | null | 'offline' }) {
       {health === 'offline' && (
         <span className="flex items-center gap-2 truncate text-warn">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
-          Backend not reachable at localhost:8000 · run ./dev.sh
+          {backendHint().short}
         </span>
       )}
       {health && health !== 'offline' && (

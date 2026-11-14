@@ -24,6 +24,23 @@ Prerequisites: Python 3.12, PostgreSQL 16 with pgvector, Node.js, a Groq API key
 4. `cd backend && alembic upgrade head && cd ..`
 5. `./dev.sh` (backend on :8000, frontend on :3000)
 
+## Using the deployed site (phones, Safari, other computers)
+
+The Vercel site is only the frontend; searches run on the backend on your
+laptop. To reach it from anywhere:
+
+```bash
+./dev.sh        # terminal 1: backend on localhost:8000
+./tunnel.sh     # terminal 2: prints a link like
+                # https://btp-sem-07.vercel.app/?api=https://<name>.trycloudflare.com
+```
+
+Open or share that link. The site remembers the backend address on each
+device, so later visits work without `?api=` until the next tunnel. The
+tunnel URL changes every time `./tunnel.sh` starts, and search works only
+while both commands are running. For a permanent backend, host it (e.g. with
+`docker-compose.yml`) and set `NEXT_PUBLIC_API_BASE` in the Vercel project.
+
 ## Features
 
 - **Semantic ranking** with a swappable embedder (`EMBED_MODEL`, default
