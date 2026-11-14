@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import ForceGraph3D from 'react-force-graph-3d';
 import * as THREE from 'three';
 
@@ -28,6 +28,20 @@ const endId = (end: number | GraphNode) => (typeof end === 'object' ? end.id : e
 
 export default function ReadingMap({ data }: { data: { nodes: GraphNode[], links: GraphLink[] } }) {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+
+  // The 3D canvas sizes itself to the window unless told otherwise, so track
+  // the container and hand it the real width and height.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [dims, setDims] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const measure = () => setDims({ width: el.clientWidth, height: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Dynamically calculate the min and max years from the actual data
   const { minYear, maxYear } = useMemo(() => {
@@ -65,16 +79,22 @@ export default function ReadingMap({ data }: { data: { nodes: GraphNode[], links
   }, [selectedNode, data.nodes, data.links]);
 
   return (
-    <div className="relative w-full h-[600px] bg-white border border-gray-200 rounded-xl overflow-hidden">
-      <div className="absolute top-4 left-4 z-10 bg-white/80 backdrop-blur border border-gray-200 px-3 py-1.5 rounded-md text-xs font-medium text-gray-600 shadow-sm">
-        Reading map · {data.nodes.length} papers · drag to rotate, scroll to zoom
+    <div ref={wrapperRef} className="relative w-full h-full min-h-[320px] bg-transparent overflow-hidden">
+      <div className="absolute top-3 left-3 z-10 bg-white/5 border border-white/10 text-zinc-300 backdrop-blur-md px-3 py-1.5 rounded-full text-[11px] font-medium tracking-wide">
+        Reading map <span className="text-zinc-500">·</span> {data.nodes.length} papers{' '}
+        <span className="text-zinc-500">· drag to rotate, scroll to zoom</span>
       </div>
 
+      {dims.width > 0 && (
       <ForceGraph3D
         graphData={data}
+        width={dims.width}
+        height={dims.height}
+        backgroundColor="rgba(0,0,0,0)"
+        showNavInfo={false}
         nodeLabel={(n: any) => `${n.title} (${n.short_label})`}
         nodeColor={(n: any) => yearColorScale(n.year)}
-        linkColor={(l: any) => `rgba(156, 163, 175, ${0.2 + (l.weight || 0.5) * 0.3})`}
+        linkColor={(l: any) => `rgba(161, 161, 170, ${0.25 + (l.weight || 0.5) * 0.35})`}
         linkWidth={(l: any) => 0.5 + (l.weight || 0) * 1.5}
         linkOpacity={0.4}
         onNodeClick={(node: any) => {
@@ -98,7 +118,7 @@ export default function ReadingMap({ data }: { data: { nodes: GraphNode[], links
             canvas.width = 256;
             canvas.height = 64;
             ctx.font = '24px Sans-Serif';
-            ctx.fillStyle = '#1f2937';
+            ctx.fillStyle = '#e4e4e7';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(node.short_label || '', 128, 32);
@@ -126,18 +146,19 @@ export default function ReadingMap({ data }: { data: { nodes: GraphNode[], links
         cooldownTicks={0}
         enableNodeDrag={false}
       />
+      )}
 
       {/* Details panel for the clicked paper */}
       {selectedNode && (
-        <aside className="absolute top-4 right-4 bottom-4 z-10 w-72 max-w-[calc(100%-2rem)] bg-white/95 backdrop-blur border border-gray-200 rounded-lg shadow-md flex flex-col overflow-hidden">
-          <div className="flex items-start gap-2 p-3 border-b border-gray-100">
+        <aside className="absolute top-4 right-4 bottom-4 z-10 w-72 max-w-[calc(100%-2rem)] bg-zinc-950/80 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl shadow-black/50 flex flex-col overflow-hidden">
+          <div className="flex items-start gap-2 p-3 border-b border-white/10">
             <span
               className="mt-1 w-3 h-3 shrink-0 rounded-full"
               style={{ background: yearColorScale(selectedNode.year) }}
             />
             <div className="min-w-0 flex-1">
-              <h3 className="text-sm font-semibold text-gray-900 leading-snug">{selectedNode.title}</h3>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <h3 className="text-sm font-semibold text-zinc-100 leading-snug">{selectedNode.title}</h3>
+              <p className="text-xs text-zinc-400 mt-0.5">
                 {selectedNode.short_label || 'Unknown author'}
                 {selectedNode.year && !(selectedNode.short_label || '').includes(String(selectedNode.year))
                   ? ` · ${selectedNode.year}` : ''}
@@ -147,41 +168,41 @@ export default function ReadingMap({ data }: { data: { nodes: GraphNode[], links
               type="button"
               onClick={() => setSelectedNode(null)}
               aria-label="Close details"
-              className="shrink-0 text-gray-400 hover:text-gray-700 text-lg leading-none px-1"
+              className="shrink-0 text-zinc-500 hover:text-zinc-200 text-lg leading-none px-1 transition-colors"
             >
               ×
             </button>
           </div>
 
-          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 px-3 py-2.5 text-xs border-b border-gray-100">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 px-3 py-2.5 text-xs border-b border-white/10">
             {selectedNode.primary_category && (
               <>
-                <dt className="text-gray-500">Category</dt>
-                <dd className="text-gray-800">{selectedNode.primary_category}</dd>
+                <dt className="text-zinc-500">Category</dt>
+                <dd className="text-zinc-200">{selectedNode.primary_category}</dd>
               </>
             )}
             {selectedNode.cluster && (
               <>
-                <dt className="text-gray-500">Cluster</dt>
-                <dd className="text-gray-800">{selectedNode.cluster}</dd>
+                <dt className="text-zinc-500">Cluster</dt>
+                <dd className="text-zinc-200">{selectedNode.cluster}</dd>
               </>
             )}
-            <dt className="text-gray-500">Connections</dt>
-            <dd className="text-gray-800">{selectedNode.degree ?? neighbours.length}</dd>
+            <dt className="text-zinc-500">Connections</dt>
+            <dd className="text-zinc-200">{selectedNode.degree ?? neighbours.length}</dd>
             {selectedNode.author_surnames && selectedNode.author_surnames.length > 0 && (
               <>
-                <dt className="text-gray-500">Authors</dt>
-                <dd className="text-gray-800">{selectedNode.author_surnames.join(', ')}</dd>
+                <dt className="text-zinc-500">Authors</dt>
+                <dd className="text-zinc-200">{selectedNode.author_surnames.join(', ')}</dd>
               </>
             )}
           </dl>
 
           <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2.5">
-            <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+            <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-wide mb-1.5">
               Connected papers
             </p>
             {neighbours.length === 0 ? (
-              <p className="text-xs text-gray-400">No links to other papers in this map.</p>
+              <p className="text-xs text-zinc-500">No links to other papers in this map.</p>
             ) : (
               <ul className="flex flex-col gap-1">
                 {neighbours.map(({ node, weight }) => (
@@ -189,15 +210,15 @@ export default function ReadingMap({ data }: { data: { nodes: GraphNode[], links
                     <button
                       type="button"
                       onClick={() => setSelectedNode(node)}
-                      className="w-full text-left rounded-md px-2 py-1.5 hover:bg-gray-50 flex items-start gap-2"
+                      className="w-full text-left rounded-md px-2 py-1.5 hover:bg-white/5 flex items-start gap-2 transition-colors"
                     >
                       <span
                         className="mt-1 w-2 h-2 shrink-0 rounded-full"
                         style={{ background: yearColorScale(node.year) }}
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="block text-xs text-gray-800 leading-snug line-clamp-2">{node.title}</span>
-                        <span className="block text-[10px] text-gray-400">
+                        <span className="block text-xs text-zinc-200 leading-snug line-clamp-2">{node.title}</span>
+                        <span className="block text-[10px] text-zinc-500">
                           {node.short_label ? `${node.short_label} · ` : ''}similarity {weight.toFixed(2)}
                         </span>
                       </span>
@@ -211,18 +232,18 @@ export default function ReadingMap({ data }: { data: { nodes: GraphNode[], links
       )}
 
       {/* Dynamic Legend */}
-      <div className="absolute bottom-4 left-4 z-10 bg-white/90 backdrop-blur border border-gray-200 rounded-md shadow-sm p-3 flex flex-col gap-2">
+      <div className="absolute bottom-3 left-3 z-10 bg-white/5 border border-white/10 text-zinc-300 backdrop-blur-md rounded-xl p-3 flex flex-col gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-gray-500">{minYear}</span>
+          <span className="text-[10px] text-zinc-400 tabular-nums">{minYear}</span>
           <div className="w-24 h-2 rounded-full" style={{
             background: `linear-gradient(to right, ${yearColorScale(minYear)}, ${yearColorScale(minYear + (maxYear-minYear)/2)}, ${yearColorScale(maxYear)})`
           }} />
-          <span className="text-[10px] text-gray-500">{maxYear}</span>
-          <span className="text-[10px] font-medium text-gray-700 ml-1">Year</span>
+          <span className="text-[10px] text-zinc-400 tabular-nums">{maxYear}</span>
+          <span className="text-[10px] font-medium text-zinc-300 ml-1">Year</span>
         </div>
-        <div className="flex items-center gap-2 text-[10px] text-gray-500">
-          <div className="w-2 h-2 rounded-full bg-gray-400" />
-          <div className="w-3.5 h-3.5 rounded-full bg-gray-400" />
+        <div className="flex items-center gap-2 text-[10px] text-zinc-400">
+          <div className="w-2 h-2 rounded-full bg-zinc-500" />
+          <div className="w-3.5 h-3.5 rounded-full bg-zinc-500" />
           <span className="ml-1">Node size = connections (degree)</span>
         </div>
       </div>
