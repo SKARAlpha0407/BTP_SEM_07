@@ -1,3 +1,5 @@
+import re
+
 import arxiv
 from dataclasses import dataclass
 from typing import List, Optional
@@ -17,29 +19,27 @@ class Paper:
     summary: Optional[dict] = None
 
 
-def _build_query(topic: str) -> str:
-    """
-    Build an arXiv query string.
+def _escape(topic: str) -> str:
+    """Make user text safe inside an arXiv query: drop quotes, parentheses and
+    field-prefix colons so input cannot alter the query structure."""
+    cleaned = re.sub(r'["()\\:]+', " ", topic)
+    return re.sub(r"\s+", " ", cleaned).strip()
 
-    - If the topic is wrapped in double quotes, do an exact title search
-      (ti:"..."). This catches canonical papers like "Attention Is All You
-      Need" that a broad all: search would bury under 50k keyword matches.
-    - Otherwise search all fields with the raw topic.
-    """
-    stripped = topic.strip()
-    if len(stripped) >= 2 and stripped.startswith('"') and stripped.endswith('"'):
-        inner = stripped[1:-1].strip()
-        if inner:
-            return f'ti:"{inner}"'
-    return f"all:{stripped}"
+
+# One shared client: arXiv asks for <= 1 request every 3 seconds. The client
+# enforces the delay between calls and retries transient 5xx / empty pages.
+_client = arxiv.Client(page_size=50, delay_seconds=3.0, num_retries=3)
 
 
 def search_papers(topic: str, max_results: int = 30) -> List[Paper]:
-    client = arxiv.Client()
+    client = _client
+    safe = _escape(topic)
+    if not safe:
+        return []
 
     # 2a. DUAL SEARCH: search both all: and ti:
-    all_query = f"all:{topic}"
-    ti_query = f"ti:\"{topic}\""
+    all_query = f"all:{safe}"
+    ti_query = f'ti:"{safe}"'
 
     def fetch_papers(q: str, limit: int) -> List[Paper]:
         search = arxiv.Search(
@@ -98,5 +98,4 @@ def search_papers(topic: str, max_results: int = 30) -> List[Paper]:
 
 
 def _normalize(s: str) -> str:
-    import re
     return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()

@@ -12,3 +12,11 @@ sqlalchemy>=2.0
 psycopg[binary]>=3.2
 pgvector>=0.3
 alembic>=1.13
+groq
+
+# Evaluation harness (eval/) and tests
+scikit-learn
+matplotlib
+pytest
+httpx
+# Optional, only for the pretrained FastText baseline: gensim

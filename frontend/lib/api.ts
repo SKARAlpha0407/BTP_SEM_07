@@ -13,7 +13,9 @@ export interface Paper {
     problem: string;
     methods: string;
     benchmarks: string;
+    grounding?: { score: number; unsupported: string[] };
   } | null;
+  matched_terms?: string[];
 }
 
 export interface SearchResponse {
@@ -22,6 +24,12 @@ export interface SearchResponse {
   graph: {
     nodes: Array<{ id: number; title: string; val: number; cluster?: string }>;
     links: Array<{ source: number; target: number; weight: number }>;
+  };
+  meta?: {
+    cache_path: 'warm' | 'cold';
+    latency_seconds: number;
+    embed_model: string;
+    hybrid_retrieval: boolean;
   };
 }
 

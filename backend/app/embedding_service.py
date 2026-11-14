@@ -1,189 +1,97 @@
-from sentence_transformers import SentenceTransformer, util
+"""Semantic ranking for the live pipeline.
+
+One ranking core (`_rank`) replaces three near-identical copies. The embedder
+is chosen by EMBED_MODEL (see config.py / embedders.py) and must be 384-d to
+fit the pgvector column. All vectors are L2-normalised numpy arrays.
+"""
+from __future__ import annotations
+
+import re
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
-import threading
-from typing import List
 
-# ---------------------------------------------------------------------------
-# Model loading — lazy, thread-safe, CPU-only.
-#
-# Why CPU: on Apple Silicon, sentence-transformers defaults to the MPS (Metal)
-# GPU backend. When Uvicorn runs two /search handlers concurrently (its
-# threadpool), both threads encode into the same MTLCommandBuffer and macOS
-# aborts the process with:
-#     failed assertion _status < MTLCommandBufferStatusCommitted
-# This is a C++-level abort — Python cannot catch it, and the whole server
-# dies. Forcing CPU sidesteps MPS entirely. MiniLM on CPU is ~50-150ms per
-# batch of 5; the GPU was never the bottleneck here.
-# ---------------------------------------------------------------------------
+from .config import EMBED_MODEL
+from .embedders import get_embedder
 
-_MODEL_NAME = "all-MiniLM-L6-v2"
-
-_model = None
-_model_lock = threading.Lock()
+# Kept for backwards compatibility: main.py and the cache key on this name.
+_MODEL_NAME = EMBED_MODEL
 
 
-def _get_model() -> SentenceTransformer:
-    """Lazy, thread-safe singleton. Loads MiniLM on CPU exactly once."""
-    global _model
-    if _model is None:
-        with _model_lock:
-            if _model is None:
-                _model = SentenceTransformer(_MODEL_NAME, device="cpu")
-    return _model
+def _embedder():
+    return get_embedder(_MODEL_NAME)
 
 
-def embed_text(text: str):
-    """Embed a single string. Returns a torch tensor on CPU."""
-    model = _get_model()
-    with _model_lock:
-        return model.encode(text, convert_to_tensor=True)
+def _normalize(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
 
 
-def rank_papers(query: str, papers: List):
+def embed_text(text: str) -> np.ndarray:
+    """Embed one string. Returns a 1-D normalised vector."""
+    return _embedder().encode([text])[0]
+
+
+def embed_batch(texts) -> Optional[np.ndarray]:
+    """Embed a list of strings. Returns (n, dim) or None for an empty list."""
+    if not texts:
+        return None
+    return _embedder().encode([t or "" for t in texts])
+
+
+def cosine_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Cosine similarity between row sets (re-normalises defensively)."""
+    from .embedders import l2_normalize
+
+    return l2_normalize(a) @ l2_normalize(b).T
+
+
+def _rank(
+    query: str,
+    papers: List,
+    cached_vectors: Optional[Dict[str, List[float]]] = None,
+) -> Tuple[list, List[List[float]]]:
+    """Score papers by cosine(query, abstract); pin an exact title match first.
+
+    Vectors found in `cached_vectors` (arxiv_id -> vector) are reused; only the
+    remaining abstracts are encoded. Returns (ranked_papers, ranked_vectors).
     """
-    Rank papers by cosine similarity between the query and each abstract.
-    Thread-safe: serializes the encode call so concurrent /search requests
-    cannot race inside the model.
-    """
-    if not papers:
-        return []
-
-    def _normalize(s: str) -> str:
-        import re
-        return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
-
-    norm_query = _normalize(query)
-
-    model = _get_model()
-    query_emb = model.encode(query, convert_to_tensor=True)
-    abstracts = [p.abstract for p in papers]
-
-    with _model_lock:
-        paper_embs = model.encode(abstracts, convert_to_tensor=True)
-
-    scores = util.cos_sim(query_emb, paper_embs)[0]
-
-    for i, paper in enumerate(papers):
-        paper.relevance_score = float(scores[i])
-
-    _nq = _normalize(query)
-    for _p in papers:
-        if _normalize(_p.title) == _nq:
-            _p.relevance_score = 1.0
-
-    def sort_key(p):
-        norm_title = _normalize(p.title)
-        if norm_title == norm_query:
-            return (1, 0)
-        return (0, p.relevance_score or 0)
-
-    return sorted(papers, key=sort_key, reverse=True)
-
-
-def rank_papers_with_vectors(query: str, papers: List) -> tuple[list, list[list[float]]]:
-    """Rank papers and return embeddings as Python lists of floats."""
     if not papers:
         return [], []
 
-    def _normalize(s: str) -> str:
-        import re
-        return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+    vec_map: Dict[str, List[float]] = dict(cached_vectors or {})
+    todo = [p for p in papers if p.arxiv_id not in vec_map]
+    if todo:
+        new = embed_batch([p.abstract for p in todo])
+        for p, v in zip(todo, new):
+            vec_map[p.arxiv_id] = v.tolist()
+
+    all_vecs = [vec_map[p.arxiv_id] for p in papers]
+    scores = cosine_matrix(embed_text(query)[None, :], np.asarray(all_vecs, dtype=np.float32))[0]
 
     norm_query = _normalize(query)
+    exact = []
+    for p, s in zip(papers, scores):
+        is_exact = _normalize(p.title) == norm_query
+        p.relevance_score = 1.0 if is_exact else float(s)
+        exact.append(is_exact)
 
-    model = _get_model()
-    query_emb = model.encode(query, convert_to_tensor=True)
-    abstracts = [p.abstract if p.abstract and p.abstract.strip() else "" for p in papers]
+    order = sorted(
+        range(len(papers)),
+        key=lambda i: (exact[i], papers[i].relevance_score or 0.0),
+        reverse=True,
+    )
+    return [papers[i] for i in order], [list(all_vecs[i]) for i in order]
 
-    with _model_lock:
-        paper_embs = model.encode(abstracts, convert_to_tensor=True)
 
-    scores = util.cos_sim(query_emb, paper_embs)[0]
+def rank_papers(query: str, papers: List) -> list:
+    return _rank(query, papers)[0]
 
-    for i, paper in enumerate(papers):
-        paper.relevance_score = float(scores[i])
 
-    _nq = _normalize(query)
-    for _p in papers:
-        if _normalize(_p.title) == _nq:
-            _p.relevance_score = 1.0
-
-    def sort_key(p):
-        norm_title = _normalize(p.title)
-        if norm_title == norm_query:
-            return (1, 0)
-        return (0, p.relevance_score or 0)
-
-    pairs = list(zip(papers, paper_embs))
-    ranked_pairs = sorted(pairs, key=lambda pv: sort_key(pv[0]), reverse=True)
-    ranked = [pv[0] for pv in ranked_pairs]
-    embeddings = [pv[1].tolist() for pv in ranked_pairs]
-    return ranked, embeddings
-
-def embed_batch(texts):
-    """
-    Public batch-embedding helper. Thread-safe, CPU-only, returns a CPU tensor.
-    Use this from main.py instead of reaching into the internal _model.
-    """
-    if not texts:
-        return None
-    model = _get_model()
-    with _model_lock:
-        return model.encode(texts, convert_to_tensor=True)
+def rank_papers_with_vectors(query: str, papers: List) -> Tuple[list, List[List[float]]]:
+    return _rank(query, papers)
 
 
 def rank_with_cached_vectors(
-    query: str,
-    papers: List,
-    cached_vectors: dict,
-) -> tuple[list, list[list[float]]]:
-    """
-    Rank papers using cached vectors where available; encode only the rest.
-    cached_vectors maps arxiv_id -> list[float].
-    Returns (ranked_papers, ranked_vectors) aligned by index.
-    """
-    if not papers:
-        return [], []
-
-    def _normalize(s: str) -> str:
-        import re
-        return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
-
-    model = _get_model()
-    query_emb = model.encode(query, convert_to_tensor=True)
-
-    vec_map = dict(cached_vectors)
-
-    new_papers = [p for p in papers if p.arxiv_id not in vec_map]
-    if new_papers:
-        abstracts = [p.abstract if p.abstract and p.abstract.strip() else "" for p in new_papers]
-        with _model_lock:
-            new_embs = model.encode(abstracts, convert_to_tensor=True)
-        for i, p in enumerate(new_papers):
-            vec_map[p.arxiv_id] = new_embs[i].tolist()
-
-    all_vecs = [vec_map[p.arxiv_id] for p in papers]
-
-    import torch
-    vec_tensor = torch.tensor(all_vecs)
-    scores = util.cos_sim(query_emb, vec_tensor)[0]
-
-    for i, p in enumerate(papers):
-        p.relevance_score = float(scores[i])
-
-    _nq = _normalize(query)
-    for _p in papers:
-        if _normalize(_p.title) == _nq:
-            _p.relevance_score = 1.0
-
-    def sort_key(p):
-        norm_title = _normalize(p.title)
-        norm_query = _normalize(query)
-        if norm_title == norm_query:
-            return (1, 0)
-        return (0, p.relevance_score or 0)
-
-    ranked_pairs = sorted(zip(papers, all_vecs), key=lambda pv: sort_key(pv[0]), reverse=True)
-    ranked = [pv[0] for pv in ranked_pairs]
-    vectors = [pv[1] for pv in ranked_pairs]
-    return ranked, vectors
+    query: str, papers: List, cached_vectors: dict
+) -> Tuple[list, List[List[float]]]:
+    return _rank(query, papers, cached_vectors)
