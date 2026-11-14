@@ -77,9 +77,6 @@ export default function ReadingMap({ data }: { data: { nodes: GraphNode[], links
         linkColor={(l: any) => `rgba(156, 163, 175, ${0.2 + (l.weight || 0.5) * 0.3})`}
         linkWidth={(l: any) => 0.5 + (l.weight || 0) * 1.5}
         linkOpacity={0.4}
-        linkDirectionalParticles={2}
-        linkDirectionalParticleWidth={1.5}
-        linkDirectionalParticleSpeed={0.005}
         onNodeClick={(node: any) => {
           setSelectedNode(node);
         }}
@@ -121,7 +118,13 @@ export default function ReadingMap({ data }: { data: { nodes: GraphNode[], links
         }}
         d3AlphaDecay={0.02}
         d3VelocityDecay={0.3}
-        cooldownTicks={100}
+        // No animation: run the whole layout before the first frame (alpha
+        // decays to its floor in ~340 ticks at 0.02), then keep it still.
+        // Node dragging would restart the simulation, so it is off;
+        // rotate and zoom still work.
+        warmupTicks={400}
+        cooldownTicks={0}
+        enableNodeDrag={false}
       />
 
       {/* Details panel for the clicked paper */}
