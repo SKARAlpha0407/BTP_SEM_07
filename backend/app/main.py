@@ -112,6 +112,11 @@ class GraphNode(BaseModel):
     title: str
     val: float
     cluster: str | None = None
+    year: int = 0
+    short_label: str = ""
+    primary_category: str = ""
+    degree: int = 0
+    author_surnames: List[str] = []
 
 class GraphLink(BaseModel):
     source: int
@@ -177,7 +182,7 @@ def search(req: SearchRequest):
             _calibrate_scores(top_papers, topic)
         else:
             # --- 1b. Fallback: fetch from arxiv (cache cold or weak) ---
-            raw_papers = search_papers(topic, max_results=30)
+            raw_papers = search_papers(topic, max_results=50)
             if not raw_papers:
                 raise HTTPException(
                     status_code=404,
@@ -258,29 +263,74 @@ def search(req: SearchRequest):
         )
 
         # --- 5. Graph nodes ---
-        nodes: List[Dict[str, Any]] = [
-            {"id": i, "title": p.title, "val": p.relevance_score or 0}
-            for i, p in enumerate(top_papers)
-        ]
+        graph_papers = ranked_papers[:min(30, len(ranked_papers))]
+        nodes: List[Dict[str, Any]] = []
+        for i, p in enumerate(graph_papers):
+            year_str = p.published[:4] if p.published and len(p.published) >= 4 else "0"
+            try:
+                year = int(year_str)
+            except ValueError:
+                year = 0
+            
+            first_author = p.authors[0].split()[-1] if p.authors else "Unknown"
+            short_label = f"{first_author} {year}" if year > 0 else first_author
+            cat = p.categories[0] if p.categories else ""
+            auths = list({a.split()[-1] for a in (p.authors or []) if a.split()})[:5]
+            
+            nodes.append({
+                "id": i,
+                "title": p.title,
+                "short_label": short_label,
+                "year": year,
+                "primary_category": cat,
+                "author_surnames": auths,
+                "val": p.relevance_score or 0,
+                "degree": 0,
+                "cluster": None
+            })
 
-        # --- 6. Graph links via pairwise cosine similarity ---
-        abstracts = [p.abstract for p in top_papers]
+        # --- 6. Graph links via combined similarity ---
+        abstracts = [p.abstract for p in graph_papers]
         embs = embed_batch(abstracts)
         links: List[Dict[str, Any]] = []
         if embs is not None:
             sim_matrix = util.cos_sim(embs, embs)
-            for i in range(len(top_papers)):
-                for j in range(i + 1, len(top_papers)):
+            candidates = []
+            for i in range(len(graph_papers)):
+                for j in range(i + 1, len(graph_papers)):
                     sim = float(sim_matrix[i][j])
-                    if sim > 0.55:
-                        links.append({"source": i, "target": j, "weight": sim})
+                    
+                    cats_i = set(graph_papers[i].categories or [])
+                    cats_j = set(graph_papers[j].categories or [])
+                    cat_jac = len(cats_i & cats_j) / max(len(cats_i | cats_j), 1) if cats_i and cats_j else 0.0
+                    
+                    auth_i = set(nodes[i]["author_surnames"])
+                    auth_j = set(nodes[j]["author_surnames"])
+                    shared_auth = 1.0 if auth_i & auth_j else 0.0
+                    
+                    weight = 0.65 * sim + 0.25 * cat_jac + 0.10 * shared_auth
+                    candidates.append((i, j, weight))
 
-        # --- 7. Connected-components clustering (store INDICES) ---
+            candidates.sort(key=lambda x: x[2], reverse=True)
+            threshold = 0.35 if len(candidates) < len(graph_papers) else 0.42
+            max_edges = len(graph_papers) * 3
+            
+            for i, j, w in candidates:
+                if w >= threshold and len(links) < max_edges:
+                    links.append({"source": i, "target": j, "weight": w})
+                    nodes[i]["degree"] += 1
+                    nodes[j]["degree"] += 1
+
+        max_deg = max((n["degree"] for n in nodes), default=1) or 1
+        for n in nodes:
+            n["val"] = 0.55 * (n["degree"] / max_deg) + 0.45 * n["val"]
+
+        # --- 7. Connected-components clustering ---
         visited: set[int] = set()
         clusters: Dict[int, List[int]] = {}
         cluster_id = 0
 
-        for i in range(len(top_papers)):
+        for i in range(len(graph_papers)):  # FIXED: uses graph_papers
             if i in visited:
                 continue
             component: List[int] = []
@@ -299,20 +349,20 @@ def search(req: SearchRequest):
             clusters[cluster_id] = component
             cluster_id += 1
 
-        # --- 8. Ask the LLM for theme names, keyed by cluster id ---
+        # --- 8. Ask the LLM for theme names ---
         label_input = {
-            cid: [top_papers[idx].title for idx in indices]
+            cid: [graph_papers[idx].title for idx in indices]  # FIXED: uses graph_papers
             for cid, indices in clusters.items()
         }
         labels = get_cluster_labels(label_input, topic=topic)
 
-        # --- 9. Reverse map: node index -> cluster id ---
+        # --- 9. Reverse map ---
         index_to_cluster: Dict[int, int] = {}
         for cid, indices in clusters.items():
             for idx in indices:
                 index_to_cluster[idx] = cid
 
-        # --- 10. Final invariant: every node gets a non-empty cluster label ---
+        # --- 10. Final invariant ---
         for i, node in enumerate(nodes):
             cid = index_to_cluster.get(i, i)
             label = labels.get(str(cid), labels.get(cid))
