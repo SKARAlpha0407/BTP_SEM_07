@@ -15,13 +15,16 @@
     "react": "latest",
     "react-dom": "latest",
     "react-force-graph-2d": "latest",
-    "tailwind-merge": "latest"
+    "react-force-graph-3d": "^1.29.2",
+    "tailwind-merge": "latest",
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "@types/three": "^0.187.0",
     "autoprefixer": "latest",
     "postcss": "latest",
     "tailwindcss": "latest",
