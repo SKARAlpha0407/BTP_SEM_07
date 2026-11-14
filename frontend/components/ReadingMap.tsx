@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph3D from 'react-force-graph-3d';
 import * as THREE from 'three';
-import { X } from 'lucide-react';
+import { ArrowUpRight, X } from 'lucide-react';
 
 /*
  * Reading map. Design rules: .claude/skills/kavosh-ui/SKILL.md
@@ -24,6 +24,8 @@ interface GraphNode {
   degree?: number;
   primary_category?: string;
   author_surnames?: string[];
+  arxiv_url?: string;
+  pdf_url?: string;
 }
 
 interface GraphLink {
@@ -44,6 +46,44 @@ type Props = {
 };
 
 const endId = (end: number | GraphNode) => (typeof end === 'object' ? end.id : end);
+
+/** arXiv returns http:// entry URLs; links should be https. */
+const https = (url?: string) => (url ? url.replace(/^http:\/\//, 'https://') : '');
+const arxivId = (url?: string) => (url ? url.split('/').pop() ?? '' : '');
+
+const LINK_PILL =
+  'inline-flex items-center gap-1 rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors duration-200';
+
+/** arXiv page and PDF buttons for a paper in the map. */
+function PaperLinks({ node }: { node: GraphNode }) {
+  if (!node.arxiv_url && !node.pdf_url) {
+    return <p className="text-[12px] text-muted">Links appear after the backend restarts.</p>;
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      {node.arxiv_url && (
+        <a
+          href={https(node.arxiv_url)}
+          target="_blank"
+          rel="noreferrer"
+          className={`${LINK_PILL} border-line text-ink-2 hover:border-accent hover:text-accent`}
+        >
+          arXiv page <ArrowUpRight className="h-3 w-3" aria-hidden />
+        </a>
+      )}
+      {node.pdf_url && (
+        <a
+          href={https(node.pdf_url)}
+          target="_blank"
+          rel="noreferrer"
+          className={`${LINK_PILL} border-accent text-accent hover:bg-accent hover:text-accent-ink`}
+        >
+          PDF <ArrowUpRight className="h-3 w-3" aria-hidden />
+        </a>
+      )}
+    </div>
+  );
+}
 
 function mix(a: string, b: string, t: number) {
   const pa = parseInt(a.slice(1), 16);
@@ -266,6 +306,31 @@ export default function ReadingMap({ data, rankedTitles = [], selectedTitle, onS
     [tokens, selectedId],
   );
 
+  // Hover card: follows the pointed-at node and stays open while the pointer
+  // moves onto it, so its links can be clicked.
+  const [hover, setHover] = useState<{ node: GraphNode; x: number; y: number } | null>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const overCard = useRef(false);
+  const cancelHide = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = null;
+  };
+  const scheduleHide = () => {
+    cancelHide();
+    hideTimer.current = setTimeout(() => {
+      if (!overCard.current) setHover(null);
+    }, 350);
+  };
+  useEffect(() => cancelHide, []);
+  const onNodeHover = (raw: object | null) => {
+    if (!raw) return scheduleHide();
+    const n = raw as GraphNode & { x?: number; y?: number; z?: number };
+    const pt = fgRef.current?.graph2ScreenCoords(n.x ?? 0, n.y ?? 0, n.z ?? 0);
+    if (!pt) return;
+    cancelHide();
+    setHover({ node: n, x: pt.x, y: pt.y });
+  };
+
   const select = (n: GraphNode | null) => {
     setSelectedId(n ? n.id : null);
     onSelectTitle?.(n ? n.title : null);
@@ -273,8 +338,6 @@ export default function ReadingMap({ data, rankedTitles = [], selectedTitle, onS
 
   const selected = selectedId !== null ? byId.get(selectedId) : undefined;
 
-  // Frame the connected papers. Isolated ones can drift far out and would
-  // otherwise shrink the whole map to a dot.
   // Frame the connected papers from their laid-out positions. Isolated papers
   // can drift far out and would shrink the map to a dot. Only after the
   // layout exists: fitting earlier frames a single point.
@@ -330,7 +393,8 @@ export default function ReadingMap({ data, rankedTitles = [], selectedTitle, onS
             height={dims.height}
             backgroundColor={tokens.surface}
             showNavInfo={false}
-            nodeLabel={(n: object) => (n as GraphNode).title}
+            nodeLabel={() => ''}
+            onNodeHover={onNodeHover}
             nodeThreeObject={nodeObject}
             linkColor={linkColor}
             linkOpacity={1}
@@ -344,6 +408,36 @@ export default function ReadingMap({ data, rankedTitles = [], selectedTitle, onS
             enableNodeDrag={false}
             onEngineStop={onLayoutDone}
           />
+        )}
+        {hover && (
+          <div
+            role="dialog"
+            aria-label={hover.node.title}
+            onMouseEnter={() => {
+              overCard.current = true;
+              cancelHide();
+            }}
+            onMouseLeave={() => {
+              overCard.current = false;
+              scheduleHide();
+            }}
+            className="absolute z-10 w-[280px] animate-rise rounded-md border border-line bg-surface p-3 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.35)]"
+            style={{
+              left: Math.max(8, Math.min(hover.x + 16, dims.width - 288)),
+              top: Math.max(8, Math.min(hover.y - 24, dims.height - 150)),
+              animationDuration: '180ms',
+            }}
+          >
+            <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">
+              {[arxivId(hover.node.arxiv_url) && `arXiv:${arxivId(hover.node.arxiv_url)}`, hover.node.short_label]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+            <p className="mt-1.5 line-clamp-3 text-[13px] font-medium leading-snug text-ink">{hover.node.title}</p>
+            <div className="mt-3">
+              <PaperLinks node={hover.node} />
+            </div>
+          </div>
         )}
       </div>
 
@@ -365,6 +459,9 @@ export default function ReadingMap({ data, rankedTitles = [], selectedTitle, onS
                   {selected.degree ?? neighbours.length} links
                 </p>
                 {selected.cluster && <p className="mt-0.5 text-[12px] text-ink-2">{selected.cluster}</p>}
+                <div className="mt-2.5">
+                  <PaperLinks node={selected} />
+                </div>
               </div>
               <button
                 type="button"
