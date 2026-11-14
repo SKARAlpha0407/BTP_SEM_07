@@ -416,7 +416,7 @@ function SearchField({
         <button
           type="submit"
           disabled={disabled || !topic.trim()}
-          className={`${LABEL} shrink-0 rounded-full bg-accent text-accent-ink transition-[opacity,background-color] duration-200 hover:opacity-90 disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-muted ${
+          className={`${LABEL} shrink-0 rounded-full bg-cta text-cta-ink transition-[opacity,background-color] duration-200 hover:opacity-85 disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-muted ${
             lg ? 'px-6 py-3.5' : 'px-4 py-2'
           }`}
         >
@@ -681,7 +681,11 @@ function Synthesis({
   searched: string;
   onOpenPaper: (p: Paper) => void;
 }) {
-  const paragraphs = results.synthesis.split(/\n\s*\n/).filter((s) => s.trim());
+  // The LLM sometimes adds markdown bold; show the words, not the asterisks.
+  const paragraphs = results.synthesis
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .split(/\n\s*\n/)
+    .filter((s) => s.trim());
   return (
     <article className="max-w-[68ch]">
       <p className={`${LABEL} text-accent`}>Synthesis · {results.papers.length} papers</p>
