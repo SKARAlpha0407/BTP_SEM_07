@@ -1,12 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
-import { AlertTriangle, ArrowUpRight, Check, Info, Search } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, Check, Info } from 'lucide-react';
 import { Paper, SearchResponse } from '../lib/api';
+import { Cursor, PixelMark, PixelMeter, PixelProgress, Pixels, RevealWords, ScrollInk } from '../components/Motion';
 
 /*
  * Design rules: .claude/skills/research-copilot-ui/SKILL.md
- * Tokens (bg-page, text-ink, border-line, ...) live in styles/globals.css.
+ * Tokens (bg-page, text-ink, border-line, ...) and keyframes live in styles/globals.css.
  */
 
 const ReadingMap = dynamic(() => import('../components/ReadingMap'), { ssr: false });
@@ -37,6 +38,8 @@ const PIPELINE_STEPS = [
   { name: 'Extract', doing: 'Summarising each paper' },
   { name: 'Synthesize', doing: 'Writing the synthesis' },
 ];
+
+const LABEL = 'font-mono text-[11px] uppercase tracking-[0.14em]';
 
 export default function Home() {
   const [topic, setTopic] = useState('');
@@ -183,7 +186,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => handleSearch(undefined, searched)}
-                    className="rounded-sm bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-ink transition-opacity duration-[120ms] hover:opacity-90"
+                    className={`${LABEL} rounded-full border border-accent px-4 py-2 text-accent transition-colors duration-200 hover:bg-accent hover:text-accent-ink`}
                   >
                     Search again
                   </button>
@@ -219,6 +222,8 @@ export default function Home() {
 // Start page
 // ---------------------------------------------------------------------------
 
+const HERO_LINES = ['Every paper on your topic.', 'Ranked by meaning.', 'Summarised, then checked.', 'Mapped by how they connect.'];
+
 function StartPage({
   topic,
   setTopic,
@@ -234,85 +239,136 @@ function StartPage({
 }) {
   const embed = health && health !== 'offline' ? health.embed_model : undefined;
   const llm = health && health !== 'offline' ? health.llm_model : undefined;
+  const inputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <main className="mx-auto flex w-full max-w-[720px] flex-col gap-10 px-4 pb-16 pt-[12vh] sm:px-6">
-      <header className="flex flex-col gap-4">
-        <p className="text-[14px] font-semibold tracking-tight text-ink">Research Copilot</p>
-        <h1 className="font-serif text-[28px] font-semibold leading-[1.2] text-ink [text-wrap:balance] sm:text-[32px]">
-          Find the papers that matter on a topic, and see how they connect.
-        </h1>
-        <p className="max-w-[60ch] text-[15px] leading-relaxed text-ink-2">
-          Type a research topic. Research Copilot pulls matching papers from arXiv, ranks them by meaning,
-          summarises each one and maps how they relate.
-        </p>
+    <div className="relative">
+      <header className="sticky top-0 z-30 border-b border-line bg-page">
+        <nav className="flex h-16 items-center justify-between gap-4 px-4 sm:px-8">
+          <a href="#top" className="flex items-center gap-2.5 rounded-sm">
+            <PixelMark size={18} />
+            <span className="text-[17px] font-semibold tracking-[-0.02em]">Research Copilot</span>
+          </a>
+          <div className="flex items-center gap-6">
+            <a href="#how" className={`${LABEL} hidden rounded-sm text-ink-2 transition-colors hover:text-accent sm:block`}>
+              How it works
+            </a>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.focus()}
+              className={`${LABEL} rounded-full border border-accent px-4 py-2 text-accent transition-colors duration-200 hover:bg-accent hover:text-accent-ink`}
+            >
+              Start searching
+            </button>
+          </div>
+        </nav>
+        <StatusBar health={health} />
       </header>
 
-      <div className="flex flex-col gap-4">
-        <SearchField topic={topic} setTopic={setTopic} onSubmit={onSubmit} size="lg" autoFocus />
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2 text-[13px]">
-          <span className="text-muted">Examples</span>
-          {EXAMPLES.map((q) => (
-            <button
-              key={q}
-              type="button"
-              onClick={() => onExample(q)}
-              className="rounded-sm text-ink-2 underline decoration-line underline-offset-4 transition-colors duration-[120ms] hover:text-accent hover:decoration-accent"
-            >
-              {q}
-            </button>
-          ))}
-        </div>
-      </div>
+      <section id="top" className="relative overflow-hidden">
+        <Pixels className="hidden md:block" />
+        <div className="relative mx-auto max-w-[1180px] px-4 pb-24 pt-[9vh] sm:px-8 md:pl-[14%]">
+          <h1 className="text-[clamp(38px,4.7vw,66px)] font-medium leading-[1.06] tracking-[-0.035em]">
+            {HERO_LINES.map((line, i) => {
+              const before = HERO_LINES.slice(0, i).join(' ').split(' ').filter(Boolean).length;
+              return (
+                <span key={line} className="block">
+                  <RevealWords text={line} delay={150 + before * 70} step={70} />
+                </span>
+              );
+            })}
+          </h1>
 
-      <section className="border-t border-line pt-6">
-        <h2 className="mb-4 text-[11px] font-medium uppercase tracking-[0.06em] text-muted">What happens when you search</h2>
-        <ol className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
-          {[
-            ['Search arXiv', 'Up to 30 candidate papers that match your topic.'],
-            [
-              'Rank by meaning',
-              `Each abstract is embedded${embed ? ` with ${embed}` : ''} and scored against your topic.`,
-            ],
-            [
-              'Summarise',
-              `${llm ? `${llm} writes` : 'A language model writes'} a TL;DR, problem, method and benchmarks for each paper, checked against its abstract.`,
-            ],
-            ['Map', 'Papers are linked by similarity and grouped into named clusters you can explore.'],
-          ].map(([title, body], i) => (
-            <li key={title} className="flex gap-3">
-              <span className="w-4 shrink-0 font-mono text-[13px] text-muted tabular-nums">{i + 1}</span>
-              <div>
-                <p className="text-[14px] font-medium text-ink">{title}</p>
-                <p className="mt-0.5 text-[13px] leading-relaxed text-ink-2">{body}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
+          <div className="mt-10 max-w-[720px] animate-rise" style={{ animationDelay: '500ms' }}>
+            <SearchField
+              topic={topic}
+              setTopic={setTopic}
+              onSubmit={onSubmit}
+              size="lg"
+              autoFocus
+              inputRef={inputRef}
+            />
+            <div className="mt-5 flex flex-wrap items-baseline gap-x-5 gap-y-2.5">
+              <span className={`${LABEL} text-muted`}>Try</span>
+              {EXAMPLES.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => onExample(q)}
+                  className={`${LABEL} group rounded-sm text-ink-2 transition-colors duration-200 hover:text-accent`}
+                >
+                  {q}
+                  <span className="ml-1 inline-block transition-transform duration-200 group-hover:translate-x-1">›</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </section>
 
-      <p className="flex items-center gap-2 text-[12px] text-muted">
-        {health === null && 'Checking the backend…'}
-        {health === 'offline' && (
-          <>
-            <AlertTriangle className="h-3.5 w-3.5 text-warn" aria-hidden />
-            <span>
-              <span className="text-warn">Backend not reachable</span> at localhost:8000. Start it with{' '}
-              <code className="font-mono">./dev.sh</code>.
-            </span>
-          </>
-        )}
-        {health && health !== 'offline' && (
-          <>
-            <Check className="h-3.5 w-3.5 text-accent" aria-hidden />
-            <span>
-              Backend ready
-              {health.hybrid_retrieval ? ' · hybrid retrieval on' : ''}
-            </span>
-          </>
-        )}
-      </p>
-    </main>
+      <section id="how" className="border-t border-line">
+        <div className="mx-auto flex max-w-[1180px] flex-col gap-10 px-4 py-[18vh] sm:px-8 md:pl-[14%]">
+          <p className={`${LABEL} text-muted`}>What happens when you search</p>
+          {[
+            'Type a topic.',
+            'We pull up to 30 candidate papers from arXiv.',
+            `${embed ?? 'An embedding model'} ranks every abstract against your words.`,
+            `${llm ?? 'A language model'} writes the TL;DR, problem, method and benchmarks for each paper.`,
+            'Then checks each summary against its abstract.',
+            'And maps which papers sit close together.',
+            'That’s your reading list.',
+          ].map((line) => (
+            <ScrollInk key={line} className="max-w-[22ch] text-[32px] font-medium leading-[1.12] tracking-[-0.03em] sm:text-[46px]">
+              {line}
+            </ScrollInk>
+          ))}
+        </div>
+      </section>
+
+      <footer className="border-t border-line">
+        <div className="px-4 pb-8 pt-14 sm:px-8">
+          <p
+            aria-hidden
+            className="select-none text-[clamp(52px,14.5vw,220px)] font-medium uppercase leading-[0.86] tracking-[-0.045em] text-ink"
+          >
+            Research
+            <br />
+            Copilot
+          </p>
+          <div className={`${LABEL} mt-10 flex flex-wrap items-center justify-between gap-4 text-muted`}>
+            <span>Thank you to arXiv for use of its open access interoperability.</span>
+            <a href="#top" className="rounded-sm transition-colors hover:text-accent">
+              Back to top ↑
+            </a>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function StatusBar({ health }: { health: Health | null | 'offline' }) {
+  return (
+    <div className={`${LABEL} flex h-10 items-center justify-center gap-3 overflow-hidden border-t border-line px-4 text-ink-2`}>
+      {health === null && <span className="text-muted">Checking the backend</span>}
+      {health === 'offline' && (
+        <span className="flex items-center gap-2 truncate text-warn">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          Backend not reachable at localhost:8000 · run ./dev.sh
+        </span>
+      )}
+      {health && health !== 'offline' && (
+        <span className="flex min-w-0 items-center gap-2.5">
+          <span className="h-2 w-2 shrink-0 animate-blink bg-accent" aria-hidden />
+          <span className="truncate">
+            Live on arXiv
+            {health.embed_model && <span className="hidden sm:inline"> · embeddings {health.embed_model}</span>}
+            {health.llm_model && <span className="hidden md:inline"> · summaries {health.llm_model}</span>}
+            {health.hybrid_retrieval ? ' · hybrid retrieval' : ''}
+          </span>
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -323,6 +379,7 @@ function SearchField({
   size,
   disabled,
   autoFocus,
+  inputRef,
 }: {
   topic: string;
   setTopic: (v: string) => void;
@@ -330,23 +387,27 @@ function SearchField({
   size: 'lg' | 'sm';
   disabled?: boolean;
   autoFocus?: boolean;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
 }) {
   const lg = size === 'lg';
   return (
     <form onSubmit={onSubmit} role="search" className="w-full">
       <div
-        className={`flex items-center rounded-md border border-line bg-surface transition-colors duration-[120ms] focus-within:border-accent ${
-          lg ? 'h-12 pl-4 pr-1.5' : 'h-9 pl-3 pr-1'
+        className={`flex items-center rounded-full border border-line bg-surface transition-[border-color,box-shadow] duration-200 focus-within:border-accent focus-within:shadow-[0_0_0_4px_var(--mark)] ${
+          lg ? 'h-16 pl-6 pr-2' : 'h-10 pl-4 pr-1'
         }`}
       >
-        <Search className={`shrink-0 text-muted ${lg ? 'h-[18px] w-[18px]' : 'h-4 w-4'}`} aria-hidden />
+        <span className={`${LABEL} shrink-0 text-accent ${lg ? '' : 'hidden sm:inline'}`} aria-hidden>
+          ›
+        </span>
         <input
+          ref={inputRef}
           id={lg ? 'topic-start' : 'topic-bar'}
           autoFocus={autoFocus}
-          className={`min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-muted disabled:opacity-60 focus-visible:outline-none ${
-            lg ? 'px-3 text-[16px]' : 'px-2 text-[14px]'
+          className={`min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-muted disabled:opacity-60 ${
+            lg ? 'px-3 text-[18px]' : 'px-2 text-[14px]'
           }`}
-          placeholder="Research topic, e.g. retrieval augmented generation"
+          placeholder="Type a research topic"
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
           disabled={disabled}
@@ -355,11 +416,11 @@ function SearchField({
         <button
           type="submit"
           disabled={disabled || !topic.trim()}
-          className={`shrink-0 rounded-sm bg-accent font-medium text-accent-ink transition-opacity duration-[120ms] hover:opacity-90 disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-muted ${
-            lg ? 'px-4 py-2 text-[14px]' : 'px-3 py-1 text-[13px]'
+          className={`${LABEL} shrink-0 rounded-full bg-accent text-accent-ink transition-[opacity,background-color] duration-200 hover:opacity-90 disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-muted ${
+            lg ? 'px-6 py-3.5' : 'px-4 py-2'
           }`}
         >
-          {disabled ? 'Searching…' : 'Search'}
+          {disabled ? 'Searching' : 'Search'}
         </button>
       </div>
     </form>
@@ -386,26 +447,23 @@ function TopBar({
   meta?: SearchResponse['meta'];
 }) {
   return (
-    <header className="sticky top-0 z-20 shrink-0 border-b border-line bg-surface">
-      <div className="flex h-12 items-center gap-4 px-4">
-        <button
-          type="button"
-          onClick={onHome}
-          className="shrink-0 rounded-sm text-[14px] font-semibold tracking-tight text-ink"
-        >
-          <span className="hidden sm:inline">Research Copilot</span>
-          <span className="sm:hidden" aria-label="Research Copilot">RC</span>
+    <header className="sticky top-0 z-20 shrink-0 border-b border-line bg-page">
+      <div className="flex h-14 items-center gap-4 px-4">
+        <button type="button" onClick={onHome} className="flex shrink-0 items-center gap-2 rounded-sm" aria-label="Research Copilot, start page">
+          <PixelMark size={16} />
+          <span className="hidden text-[15px] font-semibold tracking-[-0.02em] sm:inline">Research Copilot</span>
         </button>
-        <div className="mx-auto w-full min-w-0 max-w-[560px]">
+        <div className="mx-auto w-full min-w-0 max-w-[600px]">
           <SearchField topic={topic} setTopic={setTopic} onSubmit={onSubmit} size="sm" disabled={loading} />
         </div>
-        <div className="hidden w-[180px] shrink-0 justify-end md:flex">
+        <div className="hidden w-[190px] shrink-0 justify-end md:flex">
           {meta && (
             <p
-              className="text-[12px] text-muted tabular-nums"
+              className={`${LABEL} flex items-center gap-2 text-muted`}
               title={meta.cache_path === 'warm' ? 'Served from the semantic cache' : 'Fetched live from arXiv'}
             >
-              {meta.cache_path === 'warm' ? 'from cache' : 'live from arXiv'} · {meta.latency_seconds.toFixed(1)} s
+              <span className={`h-1.5 w-1.5 ${meta.cache_path === 'warm' ? 'bg-ink-2' : 'bg-accent'}`} aria-hidden />
+              {meta.cache_path === 'warm' ? 'Cached' : 'Live'} · {meta.latency_seconds.toFixed(1)} s
             </p>
           )}
         </div>
@@ -420,10 +478,11 @@ function TopBar({
 
 /** Three panes on wide screens: ranked list | reader | map. Stacks below 1024px. */
 const PANES =
-  'flex flex-1 flex-col lg:grid lg:min-h-0 lg:grid-cols-[340px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_400px] xl:grid-cols-[340px_minmax(0,1fr)_minmax(0,1fr)] xl:grid-rows-1';
-const LIST_PANE = 'border-b border-line bg-surface lg:row-span-2 lg:overflow-y-auto lg:border-b-0 lg:border-r xl:row-span-1';
+  'flex flex-1 flex-col lg:grid lg:min-h-0 lg:grid-cols-[360px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_400px] xl:grid-cols-[360px_minmax(0,1fr)_minmax(0,1fr)] xl:grid-rows-1';
+const LIST_PANE = 'border-b border-line bg-page lg:row-span-2 lg:overflow-y-auto lg:border-b-0 lg:border-r xl:row-span-1';
 const READER_PANE = 'flex min-h-0 min-w-0 flex-col border-b border-line bg-surface lg:border-b-0 xl:border-r';
 const MAP_PANE = 'h-[560px] lg:col-start-2 lg:row-start-2 lg:h-auto lg:min-h-0 lg:border-t lg:border-line xl:col-start-3 xl:row-start-1 xl:border-t-0';
+const PANE_HEAD = 'flex h-11 shrink-0 items-center justify-between gap-3 border-b border-line px-4';
 
 function ResultsView({
   results,
@@ -451,21 +510,25 @@ function ResultsView({
   return (
     <div className={PANES}>
       <aside className={LIST_PANE} aria-label="Ranked papers">
-        <div className="sticky top-0 z-10 flex h-10 items-center justify-between border-b border-line bg-surface px-4">
-          <h2 className="text-[13px] font-medium text-ink">
-            Ranked papers
-            <span className="ml-2 font-mono text-[12px] font-normal text-muted tabular-nums">{results.papers.length}</span>
+        <div className={`${PANE_HEAD} sticky top-0 z-10 bg-page`}>
+          <h2 className={`${LABEL} text-ink`}>
+            Ranked papers <span className="text-muted">/ {results.papers.length}</span>
           </h2>
-          <span className="text-[12px] text-muted">by relevance</span>
+          <span className={`${LABEL} text-muted`}>Relevance</span>
         </div>
         <ol>
           {results.papers.map((p, i) => (
-            <li key={p.arxiv_id} className="border-b border-line last:border-b-0">
+            <li
+              key={p.arxiv_id}
+              className="animate-rise border-b border-line last:border-b-0"
+              style={{ animationDelay: `${i * 70}ms` }}
+            >
               <PaperRow
                 paper={p}
                 rank={i + 1}
                 active={shownPaper?.arxiv_id === p.arxiv_id}
                 onClick={() => onOpenPaper(p)}
+                delay={250 + i * 70}
               />
             </li>
           ))}
@@ -473,24 +536,24 @@ function ResultsView({
       </aside>
 
       <section className={READER_PANE} aria-label="Reader">
-        <div className="flex h-10 shrink-0 items-stretch gap-5 border-b border-line px-4 sm:px-8" role="tablist">
+        <div className={`${PANE_HEAD} justify-start gap-6 sm:px-8`} role="tablist">
           <Tab active={view === 'synthesis'} onClick={() => setView('synthesis')}>
             Synthesis
           </Tab>
           <Tab active={view === 'paper'} onClick={() => setView('paper')} disabled={!selectedPaper}>
             Paper
             {selectedPaper && (
-              <span className="ml-1.5 font-mono text-[12px] text-muted tabular-nums">
-                {results.papers.findIndex((p) => p.arxiv_id === selectedPaper.arxiv_id) + 1}
+              <span className="ml-1.5 text-muted">
+                {String(results.papers.findIndex((p) => p.arxiv_id === selectedPaper.arxiv_id) + 1)}
               </span>
             )}
           </Tab>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
+        <div className="flex-1 overflow-y-auto px-4 py-8 sm:px-10 sm:py-10">
           {view === 'synthesis' || !selectedPaper ? (
-            <Synthesis results={results} searched={searched} onOpenPaper={onOpenPaper} />
+            <Synthesis key={`syn-${searched}`} results={results} searched={searched} onOpenPaper={onOpenPaper} />
           ) : (
-            <PaperReader paper={selectedPaper} />
+            <PaperReader key={selectedPaper.arxiv_id} paper={selectedPaper} />
           )}
         </div>
       </section>
@@ -525,11 +588,17 @@ function Tab({
       aria-selected={active}
       onClick={onClick}
       disabled={disabled}
-      className={`-mb-px flex items-center border-b-2 text-[13px] font-medium transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:opacity-40 ${
-        active ? 'border-accent text-ink' : 'border-transparent text-muted hover:text-ink'
+      className={`${LABEL} relative flex h-full items-center transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-40 ${
+        active ? 'text-ink' : 'text-muted hover:text-ink'
       }`}
     >
       {children}
+      <span
+        aria-hidden
+        className={`absolute inset-x-0 -bottom-px h-[2px] origin-left bg-accent transition-transform duration-300 ease-[var(--ease-out-soft)] ${
+          active ? 'scale-x-100' : 'scale-x-0'
+        }`}
+      />
     </button>
   );
 }
@@ -540,7 +609,7 @@ function firstAuthor(p: Paper) {
   return p.authors.length > 1 ? `${surname} et al.` : surname;
 }
 
-/** Wraps query terms found in the text in <mark>, like a reader's highlighter. */
+/** Wraps runs of query terms found in the text in <mark>, like a reader's highlighter. */
 function Highlight({ text, terms }: { text: string; terms?: string[] }) {
   const words = (terms ?? []).filter((t) => t.length > 1);
   if (!words.length) return <>{text}</>;
@@ -560,11 +629,13 @@ function PaperRow({
   rank,
   active,
   onClick,
+  delay,
 }: {
   paper: Paper;
   rank: number;
   active: boolean;
   onClick: () => void;
+  delay: number;
 }) {
   const score = Math.max(0, Math.min(1, paper.relevance_score ?? 0));
   return (
@@ -572,22 +643,28 @@ function PaperRow({
       type="button"
       onClick={onClick}
       aria-current={active ? 'true' : undefined}
-      className={`grid w-full grid-cols-[20px_minmax(0,1fr)] gap-x-2 px-4 py-3 text-left transition-colors duration-[120ms] ${
-        active ? 'bg-surface-2' : 'hover:bg-surface-2'
+      className={`group relative grid w-full grid-cols-[24px_minmax(0,1fr)] gap-x-2 px-4 py-4 text-left transition-colors duration-200 ${
+        active ? 'bg-surface' : 'hover:bg-surface'
       }`}
     >
-      <span className={`pt-[3px] font-mono text-[12px] tabular-nums ${active ? 'text-accent' : 'text-muted'}`}>{rank}</span>
-      <span className="flex min-w-0 flex-col gap-1.5">
-        <span className="font-serif text-[15px] font-semibold leading-snug text-ink">
+      <span
+        aria-hidden
+        className={`absolute inset-y-0 left-0 w-[3px] origin-top bg-accent transition-transform duration-300 ease-[var(--ease-out-soft)] ${
+          active ? 'scale-y-100' : 'scale-y-0'
+        }`}
+      />
+      <span className={`pt-[2px] font-mono text-[12px] tabular-nums ${active ? 'text-accent' : 'text-muted'}`}>
+        {String(rank).padStart(2, '0')}
+      </span>
+      <span className="flex min-w-0 flex-col gap-2">
+        <span className="text-[15px] font-medium leading-snug tracking-[-0.01em] text-ink">
           <Highlight text={paper.title} terms={paper.matched_terms} />
         </span>
         <span className="truncate text-[12px] text-muted tabular-nums">
-          {firstAuthor(paper)} · {paper.published?.slice(0, 4)} · {paper.categories?.[0]}
+          {firstAuthor(paper)} · {paper.published?.slice(0, 4)} · <span className="font-mono">{paper.categories?.[0]}</span>
         </span>
-        <span className="flex items-center gap-2" title="Relevance to your topic (0 to 1)">
-          <span className="h-[2px] flex-1 bg-line">
-            <span className="block h-full bg-accent" style={{ width: `${score * 100}%` }} />
-          </span>
+        <span className="flex items-center gap-3" title="Relevance to your topic (0 to 1)">
+          <PixelMeter value={score} delay={delay} />
           <span className="font-mono text-[12px] text-ink-2 tabular-nums">{score.toFixed(3)}</span>
         </span>
       </span>
@@ -607,30 +684,33 @@ function Synthesis({
   const paragraphs = results.synthesis.split(/\n\s*\n/).filter((s) => s.trim());
   return (
     <article className="max-w-[68ch]">
-      <p className="text-[12px] text-muted">
-        Across {results.papers.length} papers on <span className="text-ink-2">“{searched}”</span>
-      </p>
-      <h2 className="mt-1 font-serif text-[24px] font-semibold leading-tight text-ink">Synthesis</h2>
-      <div className="mt-5 flex flex-col gap-4 font-serif text-[17px] leading-[1.65] text-ink">
+      <p className={`${LABEL} text-accent`}>Synthesis · {results.papers.length} papers</p>
+      <h2 className="mt-3 animate-rise text-[30px] font-medium leading-[1.1] tracking-[-0.03em] text-ink sm:text-[38px]">
+        “{searched}”
+      </h2>
+      <div className="mt-8 flex flex-col gap-5 text-[17px] leading-[1.7] text-ink">
         {paragraphs.map((para, i) => (
-          <p key={i}>{para}</p>
+          <p key={i}>
+            <RevealWords text={para} delay={200 + i * 400} step={9} />
+          </p>
         ))}
       </div>
 
-      <h3 className="mb-2 mt-10 text-[11px] font-medium uppercase tracking-[0.06em] text-muted">Drawn from</h3>
+      <h3 className={`${LABEL} mb-3 mt-12 text-muted`}>Drawn from</h3>
       <ol className="border-t border-line">
         {results.papers.map((p, i) => (
           <li key={p.arxiv_id} className="border-b border-line">
             <button
               type="button"
               onClick={() => onOpenPaper(p)}
-              className="flex w-full items-baseline gap-3 py-2 text-left transition-colors duration-[120ms] hover:text-accent"
+              className="group flex w-full items-baseline gap-4 py-3 text-left transition-colors duration-200 hover:text-accent"
             >
-              <span className="w-4 shrink-0 font-mono text-[12px] text-muted tabular-nums">{i + 1}</span>
-              <span className="min-w-0 flex-1 text-[14px]">{p.title}</span>
+              <span className="w-5 shrink-0 font-mono text-[12px] text-muted tabular-nums">{String(i + 1).padStart(2, '0')}</span>
+              <span className="min-w-0 flex-1 text-[14px] font-medium">{p.title}</span>
               <span className="shrink-0 text-[12px] text-muted tabular-nums">
                 {firstAuthor(p)} {p.published?.slice(0, 4)}
               </span>
+              <span className="shrink-0 text-muted transition-transform duration-200 group-hover:translate-x-1 group-hover:text-accent">›</span>
             </button>
           </li>
         ))}
@@ -647,20 +727,22 @@ function PaperReader({ paper }: { paper: Paper }) {
 
   return (
     <article className="max-w-[68ch]">
-      <p className="font-mono text-[12px] text-muted">
+      <p className={`${LABEL} text-muted`}>
         arXiv:{paper.arxiv_id} · {paper.categories?.slice(0, 3).join(' ')}
       </p>
-      <h2 className="mt-2 font-serif text-[26px] font-semibold leading-[1.2] text-ink [text-wrap:balance]">
+      <h2 className="mt-3 animate-rise text-[28px] font-medium leading-[1.12] tracking-[-0.03em] text-ink [text-wrap:balance] sm:text-[34px]">
         {paper.title}
       </h2>
-      <p className="mt-3 text-[14px] leading-relaxed text-ink-2">{paper.authors.join(', ')}</p>
-      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
-        <span className="font-mono text-muted">{paper.published}</span>
+      <p className="mt-4 animate-rise text-[14px] leading-relaxed text-ink-2" style={{ animationDelay: '80ms' }}>
+        {paper.authors.join(', ')}
+      </p>
+      <div className="mt-4 flex animate-rise flex-wrap items-center gap-3" style={{ animationDelay: '140ms' }}>
+        <span className="mr-2 font-mono text-[12px] text-muted">{paper.published}</span>
         <a
           href={paper.arxiv_url}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1 rounded-sm text-accent underline-offset-4 hover:underline"
+          className={`${LABEL} inline-flex items-center gap-1 rounded-full border border-line px-3.5 py-1.5 text-ink-2 transition-colors duration-200 hover:border-accent hover:text-accent`}
         >
           arXiv page <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
         </a>
@@ -668,7 +750,7 @@ function PaperReader({ paper }: { paper: Paper }) {
           href={paper.pdf_url}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1 rounded-sm text-accent underline-offset-4 hover:underline"
+          className={`${LABEL} inline-flex items-center gap-1 rounded-full border border-accent px-3.5 py-1.5 text-accent transition-colors duration-200 hover:bg-accent hover:text-accent-ink`}
         >
           PDF <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
         </a>
@@ -676,16 +758,18 @@ function PaperReader({ paper }: { paper: Paper }) {
 
       {s ? (
         <>
-          <p className="mt-8 border-l-2 border-line pl-4 font-serif text-[19px] leading-[1.55] text-ink">{s.tldr}</p>
+          <p className="mt-10 text-[22px] font-medium leading-[1.4] tracking-[-0.015em]">
+            <RevealWords text={s.tldr} delay={200} step={30} />
+          </p>
 
-          <div className="mt-8 flex flex-col gap-7">
+          <div className="mt-10 flex animate-rise flex-col gap-8" style={{ animationDelay: '400ms' }}>
             <ReaderSection label="Problem">{s.problem}</ReaderSection>
             <ReaderSection label="Method">{s.methods}</ReaderSection>
             <BenchmarksPanel benchmarks={s.benchmarks} />
           </div>
 
           {grounding && (
-            <div className="mt-8 border-t border-line pt-4 text-[13px]">
+            <div className="mt-10 border-t border-line pt-5 text-[13px]">
               <p className={`flex items-start gap-2 ${weak ? 'text-warn' : 'text-ink-2'}`}>
                 {weak ? (
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -719,9 +803,9 @@ function PaperReader({ paper }: { paper: Paper }) {
       )}
 
       {paper.abstract && (
-        <details className="mt-6 border-t border-line pt-4" open={!s}>
-          <summary className="cursor-pointer rounded-sm text-[13px] font-medium text-ink-2 hover:text-ink">Abstract</summary>
-          <p className="mt-3 font-serif text-[16px] leading-[1.65] text-ink-2">{paper.abstract}</p>
+        <details className="mt-6 border-t border-line pt-5" open={!s}>
+          <summary className={`${LABEL} cursor-pointer rounded-sm text-ink-2 hover:text-accent`}>Abstract</summary>
+          <p className="mt-4 text-[16px] leading-[1.7] text-ink-2">{paper.abstract}</p>
         </details>
       )}
     </article>
@@ -730,9 +814,9 @@ function PaperReader({ paper }: { paper: Paper }) {
 
 function ReaderSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <section>
-      <h3 className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.06em] text-muted">{label}</h3>
-      <p className="font-serif text-[16px] leading-[1.65] text-ink">{children || '—'}</p>
+    <section className="grid gap-2 sm:grid-cols-[110px_minmax(0,1fr)] sm:gap-6">
+      <h3 className={`${LABEL} pt-1 text-accent`}>{label}</h3>
+      <p className="text-[16px] leading-[1.7] text-ink">{children || '—'}</p>
     </section>
   );
 }
@@ -746,36 +830,53 @@ function LoadingView({ step, topic }: { step: number; topic: string }) {
   return (
     <div className={PANES} aria-busy="true">
       <aside className={LIST_PANE}>
-        <div className="flex h-10 items-center border-b border-line px-4">
-          <h2 className="text-[13px] font-medium text-ink">Ranked papers</h2>
+        <div className={PANE_HEAD}>
+          <h2 className={`${LABEL} text-ink`}>Ranked papers</h2>
+          <span className={`${LABEL} text-muted tabular-nums`}>
+            {Math.max(0, step) + 1}/{PIPELINE_STEPS.length}
+          </span>
         </div>
-        <ol className="flex flex-col gap-2.5 px-4 py-4" aria-label="Search progress">
-          {PIPELINE_STEPS.map((s, i) => {
-            const done = i < step;
-            const now = i === step;
-            return (
-              <li key={s.name} className="flex items-center gap-2.5 text-[13px]">
-                <span
-                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border ${
-                    done ? 'border-accent bg-accent text-accent-ink' : now ? 'border-accent' : 'border-line'
-                  }`}
-                  aria-hidden
-                >
-                  {done && <Check className="h-3 w-3" strokeWidth={3} />}
-                </span>
-                <span className={done ? 'text-ink-2' : now ? 'font-medium text-ink' : 'text-muted'}>{s.doing}</span>
-              </li>
-            );
-          })}
-        </ol>
+        <div className="flex flex-col gap-4 px-4 py-5">
+          <PixelProgress step={step} steps={PIPELINE_STEPS.length} />
+          <ol className="flex flex-col gap-2.5" aria-label="Search progress">
+            {PIPELINE_STEPS.map((s, i) => {
+              const done = i < step;
+              const now = i === step;
+              return (
+                <li key={s.name} className={`${LABEL} flex items-center gap-2.5`}>
+                  <span
+                    className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center ${
+                      done ? 'bg-accent text-accent-ink' : now ? 'border border-accent' : 'border border-line'
+                    }`}
+                    aria-hidden
+                  >
+                    {done && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+                  </span>
+                  <span className={done ? 'text-ink-2' : now ? 'text-ink' : 'text-muted'}>
+                    {s.doing}
+                    {now && <Cursor />}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
         <div className="border-t border-line" aria-hidden>
           {[0, 1, 2, 3, 4].map((i) => (
-            <div key={i} className="grid grid-cols-[20px_1fr] gap-x-2 border-b border-line px-4 py-3">
-              <span className="font-mono text-[12px] text-line">{i + 1}</span>
+            <div
+              key={i}
+              className="grid animate-rise grid-cols-[24px_1fr] gap-x-2 border-b border-line px-4 py-4"
+              style={{ animationDelay: `${i * 90}ms` }}
+            >
+              <span className="font-mono text-[12px] text-ghost">{String(i + 1).padStart(2, '0')}</span>
               <span className="flex flex-col gap-2">
-                <span className="h-3 w-11/12 rounded-sm bg-surface-2" />
-                <span className="h-3 w-3/5 rounded-sm bg-surface-2" />
-                <span className="h-2.5 w-2/5 rounded-sm bg-surface-2" />
+                <span className="h-3 w-11/12 bg-surface-2" />
+                <span className="h-3 w-3/5 bg-surface-2" />
+                <span className="mt-1 flex gap-[2px]">
+                  {Array.from({ length: 20 }, (_, k) => (
+                    <span key={k} className="h-[6px] flex-1 bg-surface-2" />
+                  ))}
+                </span>
               </span>
             </div>
           ))}
@@ -783,25 +884,28 @@ function LoadingView({ step, topic }: { step: number; topic: string }) {
       </aside>
 
       <section className={READER_PANE}>
-        <div className="flex h-10 shrink-0 items-center border-b border-line px-4 sm:px-8">
-          <span className="text-[13px] font-medium text-muted">Synthesis</span>
+        <div className={`${PANE_HEAD} sm:px-8`}>
+          <span className={`${LABEL} text-muted`}>Synthesis</span>
         </div>
-        <div className="px-4 py-8 sm:px-8">
-          <p className="text-[12px] text-muted">Searching for</p>
-          <p className="mt-1 font-serif text-[24px] font-semibold leading-tight text-ink">“{topic}”</p>
-          <p className="mt-4 max-w-[52ch] text-[14px] leading-relaxed text-ink-2">
-            {current.doing}. A new topic usually takes 10 to 20 seconds; topics searched before come from the cache
-            and return faster.
+        <div className="px-4 py-10 sm:px-10">
+          <p className={`${LABEL} text-accent`}>Searching</p>
+          <p className="mt-3 text-[30px] font-medium leading-[1.1] tracking-[-0.03em] sm:text-[38px]">
+            <RevealWords text={`“${topic}”`} step={60} />
+          </p>
+          <p className="mt-5 max-w-[52ch] text-[15px] leading-relaxed text-ink-2">
+            {current.doing}. A new topic usually takes 10 to 20 seconds; topics searched before come from the cache and
+            return faster.
           </p>
         </div>
       </section>
 
-      <section className={`${MAP_PANE} flex flex-col bg-surface`}>
-        <div className="flex h-10 shrink-0 items-center border-b border-line px-4">
-          <span className="text-[13px] font-medium text-muted">Reading map</span>
+      <section className={`${MAP_PANE} relative flex flex-col overflow-hidden bg-surface`}>
+        <div className={PANE_HEAD}>
+          <span className={`${LABEL} text-muted`}>Reading map</span>
         </div>
-        <div className="flex flex-1 items-center justify-center p-6 text-center text-[13px] text-muted">
-          The map of related papers appears here when results arrive.
+        <div className="relative flex flex-1 items-center justify-center p-6 text-center">
+          <Pixels />
+          <p className={`${LABEL} relative text-muted`}>The map appears when results arrive</p>
         </div>
       </section>
     </div>
@@ -820,15 +924,14 @@ function StateMessage({
   tone?: 'warn';
 }) {
   return (
-    <main className="mx-auto w-full max-w-[640px] px-4 py-16 sm:px-6">
-      <div className="flex gap-3">
-        {tone === 'warn' && <AlertTriangle className="mt-1 h-4 w-4 shrink-0 text-warn" aria-hidden />}
-        <div className="min-w-0">
-          <h2 className="font-serif text-[22px] font-semibold leading-tight text-ink">{title}</h2>
-          <p className="mt-2 break-words text-[14px] leading-relaxed text-ink-2">{body}</p>
-          {action && <div className="mt-5">{action}</div>}
-        </div>
-      </div>
+    <main className="relative mx-auto w-full max-w-[720px] px-4 py-20 sm:px-6">
+      <p className={`${LABEL} flex items-center gap-2 ${tone === 'warn' ? 'text-warn' : 'text-accent'}`}>
+        {tone === 'warn' && <AlertTriangle className="h-3.5 w-3.5" aria-hidden />}
+        {tone === 'warn' ? 'Error' : 'No results'}
+      </p>
+      <h2 className="mt-3 animate-rise text-[30px] font-medium leading-[1.1] tracking-[-0.03em] text-ink">{title}</h2>
+      <p className="mt-4 break-words text-[15px] leading-relaxed text-ink-2">{body}</p>
+      {action && <div className="mt-6">{action}</div>}
     </main>
   );
 }
@@ -849,16 +952,16 @@ function BenchmarksPanel({ benchmarks }: { benchmarks: any }) {
   if (Array.isArray(benchmarks) && benchmarks.length > 0) {
     const rows = benchmarks as BenchmarkRow[];
     return (
-      <section>
-        <h3 className="mb-2 text-[11px] font-medium uppercase tracking-[0.06em] text-muted">Benchmarks</h3>
+      <section className="grid gap-2 sm:grid-cols-[110px_minmax(0,1fr)] sm:gap-6">
+        <h3 className={`${LABEL} pt-1 text-accent`}>Benchmarks</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[13px]">
             <thead>
-              <tr className="border-b border-line text-muted">
-                <th className="py-2 pr-4 font-medium">Dataset</th>
-                <th className="py-2 pr-4 font-medium">Metric</th>
-                <th className="py-2 pr-4 text-right font-medium">Result</th>
-                <th className="py-2 text-right font-medium">Baseline</th>
+              <tr className={`${LABEL} border-b border-line text-muted`}>
+                <th className="py-2 pr-4 font-normal">Dataset</th>
+                <th className="py-2 pr-4 font-normal">Metric</th>
+                <th className="py-2 pr-4 text-right font-normal">Result</th>
+                <th className="py-2 text-right font-normal">Baseline</th>
               </tr>
             </thead>
             <tbody>
