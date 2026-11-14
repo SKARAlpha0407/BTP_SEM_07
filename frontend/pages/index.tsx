@@ -6,7 +6,7 @@ import { Paper, SearchResponse } from '../lib/api';
 import { Cursor, PixelMark, PixelMeter, PixelProgress, Pixels, RevealWords, ScrollInk } from '../components/Motion';
 
 /*
- * Design rules: .claude/skills/research-copilot-ui/SKILL.md
+ * Design rules: .claude/skills/kavosh-ui/SKILL.md
  * Tokens (bg-page, text-ink, border-line, ...) and keyframes live in styles/globals.css.
  */
 
@@ -144,8 +144,8 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-page text-ink">
       <Head>
-        <title>Research Copilot</title>
-        <meta name="description" content="Find, rank, summarise and map arXiv papers on a research topic." />
+        <title>Kavosh</title>
+        <meta name="description" content="Kavosh (Persian for exploration) finds, ranks, summarises and maps arXiv papers on a research topic." />
       </Head>
 
       {isStart ? (
@@ -247,7 +247,7 @@ function StartPage({
         <nav className="flex h-16 items-center justify-between gap-4 px-4 sm:px-8">
           <a href="#top" className="flex items-center gap-2.5 rounded-sm">
             <PixelMark size={18} />
-            <span className="text-[17px] font-semibold tracking-[-0.02em]">Research Copilot</span>
+            <span className="text-[17px] font-semibold tracking-[-0.02em]">Kavosh</span>
           </a>
           <div className="flex items-center gap-6">
             <a href="#how" className={`${LABEL} hidden rounded-sm text-ink-2 transition-colors hover:text-accent sm:block`}>
@@ -329,11 +329,13 @@ function StartPage({
         <div className="px-4 pb-8 pt-14 sm:px-8">
           <p
             aria-hidden
-            className="select-none text-[clamp(52px,14.5vw,220px)] font-medium uppercase leading-[0.86] tracking-[-0.045em] text-ink"
+            className="select-none text-[clamp(72px,21vw,320px)] font-medium uppercase leading-[0.86] tracking-[-0.045em] text-ink"
           >
-            Research
-            <br />
-            Copilot
+            Kavosh
+          </p>
+          <p className="mt-4 flex items-baseline gap-3 text-ink-2">
+            <span lang="fa" dir="rtl" className="text-[22px]">کاوش</span>
+            <span className={`${LABEL} text-muted`}>Persian for exploration</span>
           </p>
           <div className={`${LABEL} mt-10 flex flex-wrap items-center justify-between gap-4 text-muted`}>
             <span>Thank you to arXiv for use of its open access interoperability.</span>
@@ -449,9 +451,9 @@ function TopBar({
   return (
     <header className="sticky top-0 z-20 shrink-0 border-b border-line bg-page">
       <div className="flex h-14 items-center gap-4 px-4">
-        <button type="button" onClick={onHome} className="flex shrink-0 items-center gap-2 rounded-sm" aria-label="Research Copilot, start page">
+        <button type="button" onClick={onHome} className="flex shrink-0 items-center gap-2 rounded-sm" aria-label="Kavosh, start page">
           <PixelMark size={16} />
-          <span className="hidden text-[15px] font-semibold tracking-[-0.02em] sm:inline">Research Copilot</span>
+          <span className="hidden text-[15px] font-semibold tracking-[-0.02em] sm:inline">Kavosh</span>
         </button>
         <div className="mx-auto w-full min-w-0 max-w-[600px]">
           <SearchField topic={topic} setTopic={setTopic} onSubmit={onSubmit} size="sm" disabled={loading} />

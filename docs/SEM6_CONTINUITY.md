@@ -2,7 +2,7 @@
 
 **Sem 6:** *Comparison of word embedding methods in NLP: classification under
 textual noise* (GloVe vs FastText vs BERT on IMDb, one fixed classifier).
-**Sem 7:** *Research Copilot*, a retrieval system over arXiv built on sentence
+**Sem 7:** *Kavosh* (formerly Research Copilot), a retrieval system over arXiv built on sentence
 embeddings.
 
 ## The connecting question

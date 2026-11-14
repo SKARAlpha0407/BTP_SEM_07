@@ -1,9 +1,9 @@
 ---
-name: research-copilot-ui
-description: Design system and rules for the Research Copilot frontend (frontend/). Load before changing any page, component, colour, font, animation or the reading-map graph, and before any "make it look better" request.
+name: kavosh-ui
+description: Design system and rules for the Kavosh frontend (formerly Research Copilot) (frontend/). Load before changing any page, component, colour, font, animation or the reading-map graph, and before any "make it look better" request.
 ---
 
-# Research Copilot UI
+# Kavosh UI
 
 Precedence: the owner's words in the current request, then this file, then your
 own taste.
@@ -36,7 +36,9 @@ copy or exact brand orange. Our mark is the three-block `PixelMark` in
   and panes; no cards with shadows.
 - Pixel motif: small accent squares that blink and hop (`Pixels`), segmented
   meters (`PixelMeter`), block progress (`PixelProgress`), a block cursor.
-- The start page ends with a giant uppercase "RESEARCH COPILOT" wordmark.
+- The start page ends with a giant uppercase "KAVOSH" wordmark and the Persian
+  کاوش with its meaning ("Persian for exploration"). Kavosh means exploration;
+  the owner picked it on 2026-11-15 to replace "Research Copilot".
 
 ## Motion (wanted, but purposeful)
 

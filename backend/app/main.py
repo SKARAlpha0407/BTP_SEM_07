@@ -76,7 +76,7 @@ if not os.environ.get("GROQ_API_KEY"):
         "GROQ_API_KEY=<your_key>. Refusing to start with a degraded LLM."
     )
 
-app = FastAPI(title="Research Copilot API")
+app = FastAPI(title="Kavosh API")
 
 # ---------------------------------------------------------------------------
 # CORS — allow the Next.js dev server (localhost:3000) to call this API.

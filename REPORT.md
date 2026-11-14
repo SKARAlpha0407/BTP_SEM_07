@@ -1,7 +1,7 @@
-# Project Report — AI Research Copilot (BTP_SEM_07)
+# Project Report — Kavosh, formerly AI Research Copilot (BTP_SEM_07)
 
 ## 1. Overview
-The AI Research Copilot is a full-stack application designed to help researchers discover and synthesize information from arXiv papers. It uses a Next.js 16 frontend (Pages router) and a FastAPI backend. The application retrieves papers based on a topic, reranks them using a local MiniLM embedding model (CPU-only), extracts structured insights and synthesis via the Groq API (gpt-oss-20b), and visualizes the research landscape as a force-directed graph with VIBGYOR color-coding by relevance rank.
+Kavosh (Persian for "exploration"; formerly the AI Research Copilot) is a full-stack application designed to help researchers discover and synthesize information from arXiv papers. It uses a Next.js 16 frontend (Pages router) and a FastAPI backend. The application retrieves papers based on a topic, reranks them using a local MiniLM embedding model (CPU-only), extracts structured insights and synthesis via the Groq API (gpt-oss-20b), and visualizes the research landscape as a force-directed graph with VIBGYOR color-coding by relevance rank.
 
 **New in this version:** A persistent pgvector cache (Postgres 16 + pgvector 0.8.0) stores paper embeddings and LLM-generated insights. The search pipeline now uses a **hybrid retrieval** strategy: a cache-first lookup with semantic similarity and TTL filtering (12-hour max age) can skip arXiv entirely on warm topics (~1.4s), while cold topics fall back to arXiv fetch + cached-vector reuse (~8.6s). This yields a ~5.8× speedup on repeat queries.
 
