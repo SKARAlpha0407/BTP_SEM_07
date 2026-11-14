@@ -60,6 +60,19 @@ export default function ReadingMap({ data }: { data: GraphData }) {
 
   const hasData = !!data && Array.isArray(data.nodes) && data.nodes.length > 0;
 
+
+  const yearColorScale = (year: number) => {
+    if (!year || year === 0) return '#9ca3af'; // fallback gray
+    const minYear = 1990;
+    const maxYear = 2025;
+    const t = Math.max(0, Math.min(1, (year - minYear) / (maxYear - minYear)));
+    // Gradient from #fcd34d (yellow) to #3b82f6 (blue)
+    const r = Math.round(252 + (59 - 252) * t);
+    const g = Math.round(211 + (130 - 211) * t);
+    const b = Math.round(77 + (246 - 77) * t);
+    return `rgb(${r}, ${g}, ${b})`;
+  };
+
   return (
     <div
       ref={wrapperRef}
@@ -76,30 +89,42 @@ export default function ReadingMap({ data }: { data: GraphData }) {
           </div>
 
           <ForceGraph2D
-            ref={fgRef}
-            graphData={data}
-            width={dims.width}
-            height={dims.height}
-            backgroundColor="#f9fafb"
-            warmupTicks={100}
-            cooldownTicks={60}
-            d3AlphaDecay={0.02}
-            d3VelocityDecay={0.3}
-            onEngineStop={() => fgRef.current?.zoomToFit(400, 80)}
-            nodeRelSize={4}
-            nodeVal={(n: any) => Math.pow(radiusOf(n), 2) / 16}
-            nodeColor={(n: any) => colorOf(n)}
-            nodeLabel={(n: any) => `${n.title}\n${n.cluster ?? ''}`}
-            linkColor={(l: any) => `rgba(59, 130, 246, ${Math.min(0.5 + (l.weight ?? 0.5) * 0.4, 0.9)})`}
-            linkWidth={(l: any) => 1.5 + (l.weight ?? 0.5) * 2}
-
-            linkDirectionalParticles={2}
-            linkDirectionalParticleWidth={1.5}
-            linkDirectionalParticleSpeed={0.004}
-            linkCurvature={0.15}
-            linkDirectionalArrowLength={4}
-            linkDirectionalArrowRelPos={0.5}
-          />
+        graphData={data}
+        nodeVal={(n: any) => 3 + (n.val || 0) * 15}
+        nodeColor={(n: any) => yearColorScale(n.year)}
+        linkColor={(l: any) => `rgba(156, 163, 175, ${0.2 + (l.weight || 0.5) * 0.5})`}
+        linkWidth={(l: any) => 0.5 + (l.weight || 0) * 2}
+        nodeCanvasObject={(node: any, ctx: any, globalScale: number) => {
+          const label = node.short_label || node.title;
+          const fontSize = 12 / globalScale;
+          ctx.font = `${fontSize}px Sans-Serif`;
+          const textWidth = ctx.measureText(label).width;
+          const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2);
+          
+          // Draw label background
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+          ctx.fillRect(node.x - bckgDimensions[0] / 2, node.y - bckgDimensions[1] / 2, bckgDimensions[0], bckgDimensions[1]);
+          
+          // Draw label text
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#1f2937';
+          ctx.fillText(label, node.x, node.y);
+          
+          // Draw the node circle
+          const radius = 3 + (node.val || 0) * 15;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
+          ctx.fillStyle = yearColorScale(node.year);
+          ctx.fill();
+          ctx.lineWidth = 1 / globalScale;
+          ctx.strokeStyle = '#ffffff';
+          ctx.stroke();
+        }}
+        d3AlphaDecay={0.02}
+        d3VelocityDecay={0.3}
+        cooldownTicks={100}
+      />
 
           {hasData && (
             <div className="absolute bottom-3 left-3 z-10 bg-white/90 backdrop-blur border border-gray-200 rounded-lg p-3">
