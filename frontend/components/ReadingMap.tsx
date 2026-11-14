@@ -7,7 +7,7 @@ import { X } from 'lucide-react';
 
 /*
  * Reading map. Design rules: .claude/skills/research-copilot-ui/SKILL.md
- * - Year is ordered, so it is one hue (blue) on a light->dark ramp, never a rainbow.
+ * - Year is ordered, so it is one hue (the accent) on a pale->deep ramp, never a rainbow.
  * - Size = number of connections. Labels only where they help: the ranked
  *   results and whatever is connected to the selection.
  * - Nothing moves on its own: layout is computed before the first frame.
@@ -44,12 +44,6 @@ type Props = {
 };
 
 const endId = (end: number | GraphNode) => (typeof end === 'object' ? end.id : end);
-
-// Blue ramp from the validated dataviz palette (steps 200..650).
-const BLUE = ['#9ec5f4', '#86b6ef', '#6da7ec', '#5598e7', '#3987e5', '#2a78d6', '#256abf', '#1c5cab', '#184f95', '#104281'];
-// Old -> new. On light surfaces newer is darker; on dark surfaces newer is lighter.
-const RAMP_LIGHT = BLUE.slice(1); // 250 .. 650
-const RAMP_DARK = BLUE.slice(0, 9).reverse(); // 600 .. 200
 
 function mix(a: string, b: string, t: number) {
   const pa = parseInt(a.slice(1), 16);
@@ -199,7 +193,13 @@ export default function ReadingMap({ data, rankedTitles = [], selectedTitle, onS
   }, [selectedId, data.links, byId]);
   const neighbourIds = useMemo(() => new Set(neighbours.map((n) => n.node.id)), [neighbours]);
 
-  const ramp = tokens?.dark ? RAMP_DARK : RAMP_LIGHT;
+  // One hue, old -> new: pale to deep on light surfaces, dim to bright on dark.
+  const ramp = useMemo(() => {
+    if (!tokens) return ['#d9d8cf', '#c4350f'];
+    return tokens.dark
+      ? [mix(tokens.accent, tokens.surface, 0.62), tokens.accent, mix(tokens.accent, '#ffffff', 0.5)]
+      : [mix(tokens.accent, tokens.surface, 0.7), tokens.accent, mix(tokens.accent, '#000000', 0.42)];
+  }, [tokens]);
   const yearColor = useCallback(
     (year?: number) => {
       if (!year || !tokens) return tokens?.muted || '#8d93a1';
@@ -311,14 +311,14 @@ export default function ReadingMap({ data, rankedTitles = [], selectedTitle, onS
 
   return (
     <div ref={wrapperRef} className="flex h-full min-h-0 flex-col bg-surface">
-      <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-line px-4">
-        <p className="text-[13px] font-medium text-ink">
-          Reading map
-          <span className="ml-2 font-mono text-[12px] font-normal text-muted tabular-nums">
-            {data.nodes.length} papers · {data.links.length} links
+      <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-line px-4 font-mono text-[11px] uppercase tracking-[0.14em]">
+        <p className="text-ink">
+          Reading map{' '}
+          <span className="text-muted tabular-nums">
+            / {data.nodes.length} papers · {data.links.length} links
           </span>
         </p>
-        <p className="hidden text-[12px] text-muted sm:block">Drag to rotate · scroll to zoom · click a paper</p>
+        <p className="hidden text-muted 2xl:block">Drag · zoom · click</p>
       </div>
 
       <div ref={canvasRef} className="relative min-h-[320px] flex-1 overflow-hidden">
@@ -353,12 +353,12 @@ export default function ReadingMap({ data, rankedTitles = [], selectedTitle, onS
           <section className="px-4 py-3">
             <div className="flex items-start gap-3">
               <span
-                className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
+                className="mt-1.5 h-2.5 w-2.5 shrink-0"
                 style={{ background: yearColor(selected.year) }}
                 aria-hidden
               />
               <div className="min-w-0 flex-1">
-                <h3 className="font-serif text-[15px] font-semibold leading-snug text-ink">{selected.title}</h3>
+                <h3 className="text-[15px] font-medium leading-snug tracking-[-0.01em] text-ink">{selected.title}</h3>
                 <p className="mt-1 font-mono text-[12px] text-muted">
                   {[selected.short_label, selected.primary_category].filter(Boolean).join(' · ')}
                   {' · '}
@@ -370,13 +370,13 @@ export default function ReadingMap({ data, rankedTitles = [], selectedTitle, onS
                 type="button"
                 onClick={() => select(null)}
                 aria-label="Clear selection"
-                className="-mr-1 rounded-sm p-1 text-muted transition-colors duration-[120ms] hover:bg-surface-2 hover:text-ink"
+                className="-mr-1 rounded-sm p-1 text-muted transition-colors duration-200 hover:bg-surface-2 hover:text-ink"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <p className="mb-1 mt-3 text-[11px] font-medium uppercase tracking-[0.06em] text-muted">
+            <p className="mb-1 mt-4 font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
               Most similar
             </p>
             {neighbours.length === 0 ? (
@@ -388,7 +388,7 @@ export default function ReadingMap({ data, rankedTitles = [], selectedTitle, onS
                     <button
                       type="button"
                       onClick={() => select(node)}
-                      className="flex w-full items-baseline gap-3 rounded-sm px-2 py-1.5 text-left transition-colors duration-[120ms] hover:bg-surface-2"
+                      className="flex w-full items-baseline gap-3 rounded-sm px-2 py-1.5 text-left transition-colors duration-200 hover:bg-surface-2"
                     >
                       <span className="w-9 shrink-0 font-mono text-[12px] text-muted tabular-nums">
                         {weight.toFixed(2)}
@@ -423,7 +423,7 @@ export default function ReadingMap({ data, rankedTitles = [], selectedTitle, onS
 
             {clusters.length > 0 && (
               <div>
-                <p className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.06em] text-muted">Clusters</p>
+                <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent">Clusters</p>
                 <div className="flex flex-wrap gap-1.5">
                   {clusters.map(([name, count]) => {
                     const on = cluster === name;
@@ -433,7 +433,7 @@ export default function ReadingMap({ data, rankedTitles = [], selectedTitle, onS
                         type="button"
                         aria-pressed={on}
                         onClick={() => setCluster(on ? null : name)}
-                        className={`rounded-sm border px-2 py-1 text-[12px] transition-colors duration-[120ms] ${
+                        className={`rounded-full border px-3 py-1 text-[12px] transition-colors duration-200 ${
                           on
                             ? 'border-accent bg-accent text-accent-ink'
                             : 'border-line text-ink-2 hover:bg-surface-2 hover:text-ink'

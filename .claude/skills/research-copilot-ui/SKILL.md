@@ -1,148 +1,113 @@
 ---
 name: research-copilot-ui
-description: Design system and rules for the Research Copilot frontend (frontend/). Load before changing any page, component, colour, font or the reading-map graph, and before any "make it look better" request. Encodes the owner's rejection of AI-slop styling.
+description: Design system and rules for the Research Copilot frontend (frontend/). Load before changing any page, component, colour, font, animation or the reading-map graph, and before any "make it look better" request.
 ---
 
 # Research Copilot UI
 
-The owner rejected the previous dark redesign as "AI slopfest". This skill is the
-design system that replaces it. Precedence: the owner's words in the current
-request, then this file, then your own taste.
+Precedence: the owner's words in the current request, then this file, then your
+own taste.
 
-## What the product is
+## History (why it looks like this)
 
-A research tool. A student types a topic; the app ranks arXiv papers, summarises
-them and draws how they connect. People scan, compare and read. Design it like a
-reference manager or a well-made reading tool, not a marketing page. The craft is
-information design and typography, not effects.
+1. An indigo/violet dark redesign was rejected as "AI slopfest".
+2. A quiet, hairline, serif reading-tool version was rejected as "boring, like a
+   Soviet-era brutalist building".
+3. The owner asked for the feel of the groq.com landing page, with more
+   animation. That is the current direction.
 
-Subject details to use as content, never as ornament: arXiv IDs (`2611.17332`),
-primary categories (`cs.CL`, `stat.ML`), first-author-year labels (`Gao 2024`),
-cosine relevance, the cross-paper synthesis as a reading text.
+Take the *language* of groq.com, never its brand: no Groq logo, wordmark, name,
+copy or exact brand orange. Our mark is the three-block `PixelMark` in
+`components/Motion.tsx`; our accent is our own vermilion.
 
-## Banned (AI-slop markers)
+## The language
 
-Never ship any of these unless the owner explicitly asks for it:
+- Warm off-white page, near-black warm ink; one vermilion signal colour used
+  sparingly (buttons, active states, small labels, pixels, meters).
+- Big, tight grotesk display type (Geist, medium weight, negative tracking).
+- Labels, nav, tabs, metadata: Geist Mono, 11px, UPPERCASE, `tracking-[0.14em]`
+  (the `LABEL` constant in `pages/index.tsx`).
+- Pill shapes for actions: outline pill in accent for secondary actions, filled
+  accent pill for the primary one. Hairline `--line` dividers between sections
+  and panes; no cards with shadows.
+- Pixel motif: small accent squares that blink and hop (`Pixels`), segmented
+  meters (`PixelMeter`), block progress (`PixelProgress`), a block cursor.
+- The start page ends with a giant uppercase "RESEARCH COPILOT" wordmark.
 
-- Indigo, violet, purple or fuchsia accents; purple-to-blue or any multi-hue gradient
-- Gradient text (`bg-clip-text text-transparent`)
-- Glow blobs, blurred colour orbs, radial "ambient" washes, coloured shadows
-- Glassmorphism: `backdrop-blur` panels, `bg-white/5` with `border-white/10`
-- Grid or dot-pattern backgrounds, noise textures
-- Near-black page with one neon/acid accent; warm cream + serif + terracotta
-- `rounded-xl`/`rounded-2xl`/`rounded-full` on everything; pills for things that are not toggles or tags
-- Sparkles/magic-wand icons for "AI"; emoji as section markers
-- Giant centred hero with an eyebrow badge, headline and three suggestion pills
-- Zero-padded decorative numbering (`01`, `02`). Rank numbers are fine because rank is a real order, but plain (`1`, `2`).
-- Pulsing skeleton walls; marquee/shimmer effects; animated particles on graphs
-- Copy like "Discover the frontier of…", "Unlock", "Supercharge", "Mapping the landscape…"
+## Motion (wanted, but purposeful)
+
+All primitives live in `components/Motion.tsx`, keyframes in `styles/globals.css`.
+
+| Effect | Where |
+|---|---|
+| `RevealWords`: words arrive pale (`--ghost`) and settle into ink | hero headline, synthesis text, TL;DR, loading topic |
+| `ScrollInk`: a line darkens as it scrolls into the middle of the screen | "What happens when you search" section |
+| `animate-rise`: fade up 10px, staggered | result rows, reader sections, buttons below the hero |
+| `PixelMeter` blocks filling one by one | relevance in ranked rows |
+| `Pixels` blinking/hopping squares | start page hero (md and up only), loading map pane |
+| Sliding accent underline / side bar | active tab, selected row |
+
+Rules: everything settles into a still, fully readable state within about two
+seconds; the search field is usable within 0.5 s; `prefers-reduced-motion`
+skips to the end state (globals.css); pixels never sit on top of text (hide them
+below `md`). The reading map does **not** animate: the owner explicitly asked
+for no animation in the graph.
 
 ## Tokens
 
-Neutrals carry a slight cool bias toward the accent. One accent: ink blue, taken
-from the validated dataviz ramp so the UI and the graph share a hue. A second,
-functional colour: highlighter yellow, used only to mark query terms found in a
-paper (what a reader does with a highlighter). All text pairs below were checked
-with the dataviz validator: every text colour is at least 4.5:1 on its surface.
+All text pairs checked with the dataviz validator (>= 4.5:1 on page and surface).
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--page` | `#f6f7f8` | `#0f1114` | app background |
-| `--surface` | `#ffffff` | `#16191e` | panels, list, reader |
-| `--surface-2` | `#eef0f3` | `#1d2127` | hover, selected row, code |
-| `--line` | `#e1e4e9` | `#272c33` | 1px hairlines, the only separators |
-| `--ink` | `#14171c` | `#e6e8eb` | primary text |
-| `--ink-2` | `#525866` | `#b1b7c2` | secondary text |
-| `--muted` | `#666c7a` | `#8d93a1` | labels, metadata (>= 4.9:1) |
-| `--accent` | `#1c5cab` | `#5598e7` | links, focus ring, selected marker, primary button |
-| `--accent-ink` | `#ffffff` | `#0f1114` | text on an accent fill |
-| `--mark` | `#fde7a6` | `#5a4613` | highlighter behind matched terms |
-| `--warn` | `#8a5a00` | `#f0b44c` | grounding warnings (always with an icon + words) |
+| `--page` | `#f3f3ee` | `#141412` | app background |
+| `--surface` | `#f8f8f4` | `#1a1a17` | reader and map panes, inputs |
+| `--surface-2` | `#e9e8e1` | `#23231f` | empty meter blocks, chips |
+| `--line` | `#dad9d0` | `#2e2e29` | hairlines |
+| `--ink` | `#26272b` | `#edede6` | primary text |
+| `--ink-2` | `#55565c` | `#b9b8ae` | secondary text |
+| `--muted` | `#6e6e66` | `#8e8d84` | labels, metadata |
+| `--ghost` | `#cfcdbe` | `#3d3d37` | unrevealed text only (decorative) |
+| `--accent` | `#c4350f` | `#ff6a3d` | signal colour |
+| `--accent-ink` | `#ffffff` | `#141412` | text on accent fills |
+| `--mark` | `#f8d6c8` | `#4a2417` | query-term highlight, focus halo |
+| `--warn` | `#8a5a00` | `#f0b44c` | warnings, always with an icon |
 
-Define them as CSS variables in `frontend/styles/globals.css` and expose them to
-Tailwind v4 with `@theme inline` (for example `--color-page: var(--page)`), so
-classes read `bg-page text-ink border-line`. Light values on `:root`, dark under
-`@media (prefers-color-scheme: dark)`, plus a `[data-theme]` override if a toggle
-exists. Never write a raw hex or a Tailwind palette class (`zinc-*`, `indigo-*`)
-in a component.
+Components use the Tailwind names (`bg-page`, `text-ink`, `border-line`,
+`text-accent`, ...). Never raw hex or palette classes (`zinc-*`, `indigo-*`).
 
-## Type
+## Still banned
 
-| Role | Face | Where |
-|---|---|---|
-| UI | Inter | controls, labels, metadata, body text |
-| Reading | Source Serif 4 | paper titles, the synthesis, TL;DR, abstracts |
-| Data | JetBrains Mono | arXiv IDs, scores, years, counts |
-
-Papers are typeset documents, so titles and reading text get a text serif; the
-tool chrome stays in a quiet sans. Load fonts with `next/font/google` (check
-`frontend/node_modules/next/dist/docs/` first: this Next version has breaking
-changes, see `frontend/AGENTS.md`). Scale (px): 12 / 13 / 14 / 16 / 20 / 28. UI
-text is 13-14px; reading text 16px at line-height 1.6 and about 68ch wide.
-Uppercase labels: 11px, `tracking-[0.06em]`, `--muted`. Numbers that line up use
-`tabular-nums`.
-
-## Shape and space
-
-- Radius: 4px controls and tags, 6px panels. Nothing rounder.
-- Separation comes from 1px `--line` hairlines and spacing, not cards. Use a
-  bordered box only for something that is genuinely a separate object (the
-  search field, a warning).
-- No shadows, except a small one on floating popovers.
-- 4px spacing grid; dense lists (row padding 10-12px).
-- Focus: 2px `--accent` outline with 2px offset on every interactive element.
-- Motion: colour/background transitions of 120ms only; nothing moves on its
-  own; respect `prefers-reduced-motion`.
+Indigo/violet/purple accents, multi-hue gradients, gradient text, glow blobs,
+glassmorphism/backdrop blur, emoji, sparkles icons for "AI", shimmering or
+pulsing skeleton walls, animated particles on the graph, and copy like
+"Unlock", "Supercharge", "Discover the frontier".
 
 ## Layout
 
-- **Start page:** a working page, left-aligned in a 720px column: product name in
-  plain text, one sentence on what the tool does, the search field with a
-  button, then example topics as a plain list of text buttons. No hero.
-- **Results:** three panes like a reference manager, separated by hairlines:
-  ranked list (about 340px), reading pane (flexible) with the selected paper or
-  the synthesis, and the reading map. The map is a tool for exploring, so give
-  it a pane of its own or a tab; do not let it push the reading text off screen.
-- **Ranked row:** rank, title in serif, first author · year · category in
-  muted mono/sans, matched terms highlighted with `--mark` inside the title
-  text itself, relevance as a mono number plus a 2px bar in `--accent`.
-- **Loading:** keep the layout; show the five pipeline steps as a plain
-  checklist with the current step named, and faint static placeholder rows. No
-  pulsing.
-- **Empty and error states:** say what happened and what to try, in one or two
-  sentences.
-- Below 1024px the panes stack: list, then reader, then map.
-
-## Reading map (graph)
-
-Follow the dataviz skill. Year is an ordered quantity, so it is a **single-hue
-sequential ramp** (blue, from the dataviz palette: older = lighter on light
-surfaces), never a rainbow. Node size = degree. Labels use `--ink-2`, links
-`--line` at full opacity, the selected node gets a 2px `--accent` ring and its
-neighbours stay at full strength while others dim. Canvas background is the pane
-surface (`--surface`), not black and not transparent over a gradient. No particles,
-no auto-rotation, no settling animation. Legend: a small year ramp with the real
-min and max years, and one line on size.
+- Start page: sticky nav (mark + name, "How it works", outline "Start
+  searching" pill) and a mono status bar fed by `/health`; hero headline at
+  `clamp(38px,4.7vw,66px)`, one sentence per line, offset left (`md:pl-[14%]`);
+  pill search; mono example links; the scroll section; the wordmark footer with
+  arXiv's requested acknowledgement.
+- Results: three panes (ranked list | reader | map), stacking below 1024px.
+  Ranked rows: zero-padded rank, title with highlighted query terms, author ·
+  year · category, `PixelMeter` + score. Reader tabs: Synthesis / Paper.
+- Reading map: year on a single-hue accent ramp (pale -> deep on light, dim ->
+  bright on dark), size = links, ring = ranked result, accent ring = selection,
+  cluster filter pills. The camera is framed from laid-out node positions after
+  `onEngineStop` (the library's `zoomToFit` framed a single point here).
 
 ## Before you finish any UI change
 
 1. `cd frontend && npx tsc --noEmit && npm run build` passes.
-2. Search the diff for banned classes:
-   `grep -nE "indigo|violet|purple|fuchsia|bg-clip-text|backdrop-blur|blur-\[|rounded-(xl|2xl|3xl)|animate-pulse|shadow-.*-500" frontend/pages frontend/components`
-   must print nothing.
-3. Look at it rendered in both themes, at desktop and at 400px wide, when the
-   session can. Say plainly if you could not.
-
-## Checking it rendered (lessons from the first rebuild)
-
-- The backend's CORS only allows `http://localhost:3000`, so serve the build on
-  port 3000 (`npx next start -p 3000`, with `./dev.sh` stopped) or searches fail.
-- Brave is installed and is Chromium: drive it with `puppeteer-core` from a tool
-  folder outside the repo (`executablePath: '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser'`,
-  args `--use-angle=swiftshader --enable-unsafe-swiftshader` so WebGL renders).
-  Emulate `prefers-color-scheme` for both themes; check 1440, 1180 and 400 wide,
-  and assert `document.documentElement.scrollWidth` equals the viewport width.
-- Flex children holding inputs need `min-w-0`, or the top bar overflows on phones.
-- Reading map: `zoomToFit` from react-force-graph-3d framed a single point here.
-  ReadingMap frames the camera itself from laid-out node positions after
-  `onEngineStop`; keep it that way.
+2. `grep -rnE "indigo|violet|purple|fuchsia|bg-clip-text|backdrop-blur|blur-\[|animate-pulse|zinc-|gray-" frontend/pages frontend/components`
+   prints nothing.
+3. Look at it rendered: light and dark, 1440, 1180 and 400px wide, and assert
+   `document.documentElement.scrollWidth` equals the viewport width.
+   - The backend's CORS only allows `http://localhost:3000`, so serve the build
+     there (`npx next start -p 3000`, with `./dev.sh` stopped).
+   - Brave is Chromium: drive it with `puppeteer-core` from a tool folder outside
+     the repo (`/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`,
+     args `--use-angle=swiftshader --enable-unsafe-swiftshader` for WebGL).
+   - Wait ~3 s before screenshots so reveals have settled.
+   - Flex children holding inputs need `min-w-0`, or the top bar overflows.
