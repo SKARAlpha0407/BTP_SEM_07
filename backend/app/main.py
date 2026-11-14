@@ -1,12 +1,15 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from typing import Any, Dict, List
 import os
+import logging
 import math
+import threading
 import time
+from collections import defaultdict, deque
 
 from . import config, telemetry
 from .arxiv_client import search_papers
@@ -79,21 +82,61 @@ if not os.environ.get("GROQ_API_KEY"):
 app = FastAPI(title="Kavosh API")
 
 # ---------------------------------------------------------------------------
-# CORS — allow the Next.js dev server (localhost:3000) to call this API.
-# Both localhost and 127.0.0.1 variants are listed so neither origin gets
-# blocked depending on how the browser resolves localhost.
+# CORS: local dev and the deployed site (plus its preview deployments) only.
+# No cookies are used, so credentials stay off. Configure via ALLOWED_ORIGINS
+# and ALLOWED_ORIGIN_REGEX.
 # ---------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
-    allow_origin_regex=r"https://.*\.vercel\.app",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=config.ALLOWED_ORIGINS,
+    allow_origin_regex=config.ALLOWED_ORIGIN_REGEX or None,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
+
+# ---------------------------------------------------------------------------
+# Rate limit for /search: a sliding one-minute window per client. When the API
+# is shared through a Cloudflare tunnel, Cloudflare puts the visitor's address
+# in CF-Connecting-IP (and overwrites any value a client sends).
+# ---------------------------------------------------------------------------
+_search_log: dict[str, deque] = defaultdict(deque)
+_search_lock = threading.Lock()
+
+
+def _client_id(request: Request) -> str:
+    return (
+        request.headers.get("cf-connecting-ip")
+        or (request.client.host if request.client else "unknown")
+    )
+
+
+def _check_rate_limit(request: Request) -> None:
+    limit = config.SEARCH_RATE_LIMIT
+    if limit <= 0:
+        return
+    now = time.monotonic()
+    key = _client_id(request)
+    with _search_lock:
+        log = _search_log[key]
+        while log and now - log[0] > 60:
+            log.popleft()
+        if len(log) >= limit:
+            retry = int(60 - (now - log[0])) + 1
+            telemetry.incr("search_rate_limited")
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many searches. Try again in {retry} s.",
+                headers={"Retry-After": str(retry)},
+            )
+        log.append(now)
+
+
+def _usable_insight(insight) -> bool:
+    """False for the placeholders the LLM layer returns when extraction fails."""
+    if not isinstance(insight, dict) or insight.get("tldr") == "Error":
+        return False
+    return any(insight.get(k) not in (None, "", "Error", "N/A") for k in ("tldr", "problem", "methods"))
 
 @app.middleware("http")
 async def add_cache_control(request, call_next):
@@ -172,7 +215,8 @@ def metrics():
 
 
 @app.post("/search", response_model=SearchResponse)
-def search(req: SearchRequest):
+def search(req: SearchRequest, request: Request):
+    _check_rate_limit(request)
     topic = req.topic.strip()
     t_start = time.perf_counter()
     telemetry.incr("search_total")
@@ -305,6 +349,10 @@ def search(req: SearchRequest):
             elif p.arxiv_id in fresh_by_id:
                 p.summary = fresh_by_id[p.arxiv_id]
             else:
+                p.summary = None
+            # A failed extraction counts as "no summary", so the UI shows the
+            # abstract instead of "Error" in every field.
+            if p.summary is not None and not _usable_insight(p.summary):
                 p.summary = None
 
         if fresh_by_id:
@@ -477,10 +525,12 @@ def search(req: SearchRequest):
         raise
     except Exception as e:
         telemetry.incr("search_error")
-        # Surface the real traceback in Terminal 1 instead of a bare "500".
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"pipeline error: {e}")
+        # Full details go to the server log; clients get a generic message.
+        logging.getLogger(__name__).exception("search pipeline failed")
+        raise HTTPException(
+            status_code=500,
+            detail="The search failed on the server. Please try again.",
+        ) from e
 
 
 @app.exception_handler(RequestValidationError)

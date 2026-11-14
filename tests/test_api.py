@@ -25,6 +25,7 @@ def client(monkeypatch):
     monkeypatch.setattr(main, "save_papers_and_embeddings", lambda *a, **k: None)
     monkeypatch.setattr(main, "save_insights", lambda *a, **k: None)
     telemetry.reset()
+    main._search_log.clear()
     return TestClient(main.app)
 
 
@@ -65,3 +66,38 @@ def test_metrics_and_health(client):
 def test_arxiv_query_escaping():
     assert _escape('ti:"x" (OR) all:y') == "ti x OR all y"
     assert _escape('""') == ""
+
+
+def test_failed_llm_summaries_are_dropped(client, monkeypatch):
+    from backend.app import main
+    monkeypatch.setattr(main, "extract_insights_batch", lambda items: [
+        {"index": i, "tldr": "Error", "problem": "Error", "methods": "Error", "benchmarks": "Error"}
+        for i, _ in enumerate(items)])
+    body = client.post("/search", json={"topic": "noise robustness", "max_results": 3}).json()
+    assert all(p["summary"] is None for p in body["papers"])
+
+
+def test_search_is_rate_limited(client, monkeypatch):
+    from backend.app import config
+    monkeypatch.setattr(config, "SEARCH_RATE_LIMIT", 2)
+    codes = [client.post("/search", json={"topic": "noise", "max_results": 2}).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]
+
+
+def test_cors_allows_only_this_site(client):
+    def allowed(origin):
+        r = client.options("/search", headers={"Origin": origin, "Access-Control-Request-Method": "POST"})
+        return r.headers.get("access-control-allow-origin") == origin
+    assert allowed("https://btp-sem-07.vercel.app")
+    assert allowed("https://btp-sem-07-git-main-someone.vercel.app")
+    assert allowed("http://localhost:3000")
+    assert not allowed("https://evil-site.vercel.app")
+
+
+def test_server_errors_do_not_leak_details(client, monkeypatch):
+    from backend.app import main
+    def boom(_):
+        raise RuntimeError("secret internal detail")
+    monkeypatch.setattr(main, "synthesize_results", boom)
+    r = client.post("/search", json={"topic": "noise", "max_results": 2})
+    assert r.status_code == 500 and "secret" not in r.text
