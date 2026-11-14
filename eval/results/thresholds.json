@@ -1,0 +1,20 @@
+{
+  "model": "all-MiniLM-L6-v2",
+  "n": 816,
+  "positive_cosine": {
+    "p05": 0.43083250522613525,
+    "p25": 0.5671840906143188,
+    "median": 0.6485000252723694
+  },
+  "hardest_negative_cosine": {
+    "median": 0.48708969354629517,
+    "p95": 0.6045901775360107
+  },
+  "suggested": {
+    "CACHE_STRONG_SCORE": 0.55,
+    "CACHE_STRONG_SCORE_f1": 0.8052,
+    "CACHE_TOP_SCORE": 0.57,
+    "CALIB_BETA_LONG": 0.4,
+    "CALIB_BETA_SHORT": 0.2
+  }
+}

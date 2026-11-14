@@ -1,0 +1,38 @@
+{
+  "all-MiniLM-L6-v2": {
+    "silhouette_cosine": 0.046,
+    "n": 816,
+    "categories": [
+      "cs.CL",
+      "cs.CV",
+      "cs.IR",
+      "cs.LG",
+      "cs.RO",
+      "stat.ML"
+    ]
+  },
+  "BAAI/bge-small-en-v1.5": {
+    "silhouette_cosine": 0.0493,
+    "n": 816,
+    "categories": [
+      "cs.CL",
+      "cs.CV",
+      "cs.IR",
+      "cs.LG",
+      "cs.RO",
+      "stat.ML"
+    ]
+  },
+  "hash-ngram": {
+    "silhouette_cosine": -0.0312,
+    "n": 816,
+    "categories": [
+      "cs.CL",
+      "cs.CV",
+      "cs.IR",
+      "cs.LG",
+      "cs.RO",
+      "stat.ML"
+    ]
+  }
+}

@@ -17,6 +17,7 @@ backend/venv/
 .env.local
 *.env.local
 backend/.env
+backend/.env.bak*
 
 *.log
 uvicorn.log
