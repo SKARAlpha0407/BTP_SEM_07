@@ -3,55 +3,62 @@
 /*
  * Research Copilot design tokens. Rules and rationale:
  * .claude/skills/research-copilot-ui/SKILL.md
- * Direction: warm off-white, near-black ink, one vermilion signal colour,
+ * Direction: ice-blue / deep navy, one blue signal colour, near-black (light)
+ * or pale-blue (dark) primary buttons,
  * uppercase mono labels, pixel accents and purposeful motion.
  */
 :root {
-  --page: #f3f3ee;
-  --surface: #f8f8f4;
-  --surface-2: #e9e8e1;
-  --line: #dad9d0;
-  --ink: #26272b;
-  --ink-2: #55565c;
-  --muted: #6e6e66;
-  --ghost: #cfcdbe; /* unrevealed text; decorative, never the only copy */
-  --accent: #c4350f;
+  --page: #f1f7fc;
+  --surface: #f8fbfe;
+  --surface-2: #e2eef8;
+  --line: #cfe1ef;
+  --ink: #0a0f1a;
+  --ink-2: #3e4a5c;
+  --muted: #5a6678;
+  --ghost: #c3d5e4; /* unrevealed text; decorative, never the only copy */
+  --accent: #0b66c3;
   --accent-ink: #ffffff;
-  --mark: #f8d6c8;
+  --cta: #0a0f1a;
+  --cta-ink: #ffffff;
+  --mark: #d4e9fa;
   --warn: #8a5a00;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --page: #141412;
-    --surface: #1a1a17;
-    --surface-2: #23231f;
-    --line: #2e2e29;
-    --ink: #edede6;
-    --ink-2: #b9b8ae;
-    --muted: #8e8d84;
-    --ghost: #3d3d37;
-    --accent: #ff6a3d;
-    --accent-ink: #141412;
-    --mark: #4a2417;
+    --page: #04070d;
+    --surface: #080c14;
+    --surface-2: #0f1622;
+    --line: #1b2533;
+    --ink: #edf3fa;
+    --ink-2: #a9b8ca;
+    --muted: #7f8da0;
+    --ghost: #1f2a38;
+    --accent: #7cc4f4;
+    --accent-ink: #04070d;
+    --cta: #e3f2fd;
+    --cta-ink: #04070d;
+    --mark: #0e3557;
     --warn: #f0b44c;
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --page: #141412;
-  --surface: #1a1a17;
-  --surface-2: #23231f;
-  --line: #2e2e29;
-  --ink: #edede6;
-  --ink-2: #b9b8ae;
-  --muted: #8e8d84;
-  --ghost: #3d3d37;
-  --accent: #ff6a3d;
-  --accent-ink: #141412;
-  --mark: #4a2417;
+  --page: #04070d;
+  --surface: #080c14;
+  --surface-2: #0f1622;
+  --line: #1b2533;
+  --ink: #edf3fa;
+  --ink-2: #a9b8ca;
+  --muted: #7f8da0;
+  --ghost: #1f2a38;
+  --accent: #7cc4f4;
+  --accent-ink: #04070d;
+  --cta: #e3f2fd;
+  --cta-ink: #04070d;
+  --mark: #0e3557;
   --warn: #f0b44c;
   color-scheme: dark;
 }
@@ -67,6 +74,8 @@
   --color-ghost: var(--ghost);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
+  --color-cta: var(--cta);
+  --color-cta-ink: var(--cta-ink);
   --color-mark: var(--mark);
   --color-warn: var(--warn);
 

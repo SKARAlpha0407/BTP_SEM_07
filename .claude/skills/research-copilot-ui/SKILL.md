@@ -14,16 +14,20 @@ own taste.
 2. A quiet, hairline, serif reading-tool version was rejected as "boring, like a
    Soviet-era brutalist building".
 3. The owner asked for the feel of the groq.com landing page, with more
-   animation. That is the current direction.
+   animation. That is the current layout, type and motion language.
+4. The owner then asked for a palette like langchain.com: ice-blue / deep
+   navy with a blue accent. That is the current palette (our own values).
 
 Take the *language* of groq.com, never its brand: no Groq logo, wordmark, name,
 copy or exact brand orange. Our mark is the three-block `PixelMark` in
-`components/Motion.tsx`; our accent is our own vermilion.
+`components/Motion.tsx`; our accent is our own blue (do not copy LangChain's exact values either).
 
 ## The language
 
-- Warm off-white page, near-black warm ink; one vermilion signal colour used
-  sparingly (buttons, active states, small labels, pixels, meters).
+- Ice-blue page and near-black navy ink in light; near-black navy page and
+  pale ink in dark. One blue signal colour used sparingly (labels, active
+  states, pixels, meters). The primary button is `--cta`: near-black in light,
+  pale blue in dark.
 - Big, tight grotesk display type (Geist, medium weight, negative tracking).
 - Labels, nav, tabs, metadata: Geist Mono, 11px, UPPERCASE, `tracking-[0.14em]`
   (the `LABEL` constant in `pages/index.tsx`).
@@ -59,17 +63,19 @@ All text pairs checked with the dataviz validator (>= 4.5:1 on page and surface)
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--page` | `#f3f3ee` | `#141412` | app background |
-| `--surface` | `#f8f8f4` | `#1a1a17` | reader and map panes, inputs |
-| `--surface-2` | `#e9e8e1` | `#23231f` | empty meter blocks, chips |
-| `--line` | `#dad9d0` | `#2e2e29` | hairlines |
-| `--ink` | `#26272b` | `#edede6` | primary text |
-| `--ink-2` | `#55565c` | `#b9b8ae` | secondary text |
-| `--muted` | `#6e6e66` | `#8e8d84` | labels, metadata |
-| `--ghost` | `#cfcdbe` | `#3d3d37` | unrevealed text only (decorative) |
-| `--accent` | `#c4350f` | `#ff6a3d` | signal colour |
-| `--accent-ink` | `#ffffff` | `#141412` | text on accent fills |
-| `--mark` | `#f8d6c8` | `#4a2417` | query-term highlight, focus halo |
+| `--page` | `#f1f7fc` | `#04070d` | app background |
+| `--surface` | `#f8fbfe` | `#080c14` | reader and map panes, inputs |
+| `--surface-2` | `#e2eef8` | `#0f1622` | empty meter blocks, chips |
+| `--line` | `#cfe1ef` | `#1b2533` | hairlines |
+| `--ink` | `#0a0f1a` | `#edf3fa` | primary text |
+| `--ink-2` | `#3e4a5c` | `#a9b8ca` | secondary text |
+| `--muted` | `#5a6678` | `#7f8da0` | labels, metadata |
+| `--ghost` | `#c3d5e4` | `#1f2a38` | unrevealed text only (decorative) |
+| `--accent` | `#0b66c3` | `#7cc4f4` | signal colour |
+| `--accent-ink` | `#ffffff` | `#04070d` | text on accent fills |
+| `--cta` | `#0a0f1a` | `#e3f2fd` | primary button fill |
+| `--cta-ink` | `#ffffff` | `#04070d` | primary button text |
+| `--mark` | `#d4e9fa` | `#0e3557` | query-term highlight, focus halo |
 | `--warn` | `#8a5a00` | `#f0b44c` | warnings, always with an icon |
 
 Components use the Tailwind names (`bg-page`, `text-ink`, `border-line`,
@@ -92,8 +98,8 @@ pulsing skeleton walls, animated particles on the graph, and copy like
 - Results: three panes (ranked list | reader | map), stacking below 1024px.
   Ranked rows: zero-padded rank, title with highlighted query terms, author ·
   year · category, `PixelMeter` + score. Reader tabs: Synthesis / Paper.
-- Reading map: year on a single-hue accent ramp (pale -> deep on light, dim ->
-  bright on dark), size = links, ring = ranked result, accent ring = selection,
+- Reading map: year on a single-hue accent ramp, derived from `--accent` (pale
+  -> deep on light, dim -> bright on dark), size = links, ring = ranked result, accent ring = selection,
   cluster filter pills. The camera is framed from laid-out node positions after
   `onEngineStop` (the library's `zoomToFit` framed a single point here).
 

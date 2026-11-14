@@ -195,7 +195,7 @@ export default function ReadingMap({ data, rankedTitles = [], selectedTitle, onS
 
   // One hue, old -> new: pale to deep on light surfaces, dim to bright on dark.
   const ramp = useMemo(() => {
-    if (!tokens) return ['#d9d8cf', '#c4350f'];
+    if (!tokens) return ['#cfe1ef', '#0b66c3'];
     return tokens.dark
       ? [mix(tokens.accent, tokens.surface, 0.62), tokens.accent, mix(tokens.accent, '#ffffff', 0.5)]
       : [mix(tokens.accent, tokens.surface, 0.7), tokens.accent, mix(tokens.accent, '#000000', 0.42)];
