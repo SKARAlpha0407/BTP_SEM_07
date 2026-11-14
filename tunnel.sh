@@ -38,6 +38,7 @@ for _ in $(seq 1 30); do [ -n "$(dig +short @1.1.1.1 "$HOST" 2>/dev/null)" ] && 
 echo
 echo "Backend tunnel: $URL"
 echo "Open or share:  $SITE_URL/?api=$URL"
+echo "(The site asks once per device before connecting: press Connect.)"
 echo
 echo "If this Mac says the address cannot be found, wait a minute: new tunnel"
 echo "names can take a moment to reach every DNS server. Phones usually work at once."

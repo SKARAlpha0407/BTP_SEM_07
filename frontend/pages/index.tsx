@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 import { AlertTriangle, ArrowUpRight, Check, Info } from 'lucide-react';
-import { Paper, SearchResponse, backendHint, getApiBase } from '../lib/api';
+import { Paper, SearchResponse, acceptBackend, backendHint, getApiBase, pendingLinkBackend, safeArxivUrl } from '../lib/api';
 import { Cursor, PixelMark, PixelMeter, PixelProgress, Pixels, RevealWords, ScrollInk } from '../components/Motion';
 
 /*
@@ -50,17 +50,33 @@ export default function Home() {
   const [searched, setSearched] = useState('');
   const [view, setView] = useState<'synthesis' | 'paper'>('synthesis');
   const [health, setHealth] = useState<Health | null | 'offline'>(null);
+  // A backend named in the share link, waiting for the visitor to accept it.
+  const [linkBackend, setLinkBackend] = useState<string | null>(null);
+  const [apiBase, setApiBase] = useState<string | null>(null);
 
   useEffect(() => {
+    setLinkBackend(pendingLinkBackend());
+    setApiBase(getApiBase());
+  }, []);
+
+  useEffect(() => {
+    if (!apiBase) return;
+    setHealth(null);
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 3000);
-    fetch(`${getApiBase()}/health`, { signal: ctrl.signal })
+    fetch(`${apiBase}/health`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((h: Health) => setHealth(h))
       .catch(() => setHealth('offline'))
       .finally(() => clearTimeout(timer));
     return () => ctrl.abort();
-  }, []);
+  }, [apiBase]);
+
+  const decideLinkBackend = (accept: boolean) => {
+    acceptBackend(accept ? linkBackend : null);
+    setLinkBackend(null);
+    setApiBase(getApiBase());
+  };
 
   // `override` lets an example search without waiting for setTopic.
   const handleSearch = async (e?: React.FormEvent, override?: string) => {
@@ -86,6 +102,8 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic: trimmed, max_results: 5 }),
+        // A hung backend should end in an error, not an endless loading screen.
+        signal: AbortSignal.timeout(120_000),
       });
 
       // Backend returns 404 when arXiv has no matches for the topic.
@@ -111,9 +129,11 @@ export default function Home() {
       }
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Search failed. The search service did not respond.'
+        err instanceof DOMException && err.name === 'TimeoutError'
+          ? 'The search took longer than 2 minutes and was stopped.'
+          : err instanceof Error
+            ? err.message
+            : 'Search failed. The search service did not respond.'
       );
     } finally {
       setLoading(false);
@@ -145,6 +165,8 @@ export default function Home() {
         <title>Kavosh</title>
         <meta name="description" content="Kavosh (Persian for exploration) finds, ranks, summarises and maps arXiv papers on a research topic." />
       </Head>
+
+      {linkBackend && <LinkBackendBar url={linkBackend} onDecide={decideLinkBackend} />}
 
       {isStart ? (
         <StartPage
@@ -211,6 +233,43 @@ export default function Home() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Asks before using a backend named in a share link (anyone can make one). */
+function LinkBackendBar({ url, onDecide }: { url: string; onDecide: (accept: boolean) => void }) {
+  const host = (() => {
+    try {
+      return new URL(url).host;
+    } catch {
+      return url;
+    }
+  })();
+  return (
+    <div role="alertdialog" aria-label="Connect search to a shared backend" className="border-b border-line bg-surface">
+      <div className="mx-auto flex max-w-[1180px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-8">
+        <p className="min-w-0 flex-1 text-[14px] text-ink-2">
+          This link connects search to <span className="break-all font-mono text-[13px] text-ink">{host}</span>. Connect
+          only if you trust the person who sent it.
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => onDecide(false)}
+            className={`${LABEL} rounded-full border border-line px-4 py-2 text-ink-2 transition-colors duration-200 hover:border-accent hover:text-accent`}
+          >
+            Ignore
+          </button>
+          <button
+            type="button"
+            onClick={() => onDecide(true)}
+            className={`${LABEL} rounded-full bg-cta px-4 py-2 text-cta-ink transition-opacity duration-200 hover:opacity-85`}
+          >
+            Connect
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -741,22 +800,26 @@ function PaperReader({ paper }: { paper: Paper }) {
       </p>
       <div className="mt-4 flex animate-rise flex-wrap items-center gap-3" style={{ animationDelay: '140ms' }}>
         <span className="mr-2 font-mono text-[12px] text-muted">{paper.published}</span>
+        {safeArxivUrl(paper.arxiv_url) && (
         <a
-          href={paper.arxiv_url}
+          href={safeArxivUrl(paper.arxiv_url)}
           target="_blank"
           rel="noreferrer"
           className={`${LABEL} inline-flex items-center gap-1 rounded-full border border-line px-3.5 py-1.5 text-ink-2 transition-colors duration-200 hover:border-accent hover:text-accent`}
         >
           arXiv page <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
         </a>
+        )}
+        {safeArxivUrl(paper.pdf_url) && (
         <a
-          href={paper.pdf_url}
+          href={safeArxivUrl(paper.pdf_url)}
           target="_blank"
           rel="noreferrer"
           className={`${LABEL} inline-flex items-center gap-1 rounded-full border border-accent px-3.5 py-1.5 text-accent transition-colors duration-200 hover:bg-accent hover:text-accent-ink`}
         >
           PDF <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
         </a>
+        )}
       </div>
 
       {s ? (
