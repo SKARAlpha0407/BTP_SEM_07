@@ -33,13 +33,77 @@ export interface SearchResponse {
   };
 }
 
-export const API_BASE = 'http://localhost:8000';
+// Where the FastAPI backend lives, in order of preference:
+// 1. A tunnel URL given in the page link, `?api=https://<name>.trycloudflare.com`
+//    (see ./tunnel.sh). It is remembered on this device, so later visits work
+//    without the parameter until a new link replaces it.
+// 2. NEXT_PUBLIC_API_BASE, set in the deployment and read at build time.
+// 3. A backend on the same machine (development).
+const BUILD_API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/$/, '');
+const STORAGE_KEY = 'kavosh-api-base';
+
+// Only tunnel or local addresses are accepted from a link, so a crafted link
+// cannot send a visitor's searches to an arbitrary server.
+function isAllowedOverride(url: string) {
+  try {
+    const u = new URL(url);
+    return (
+      (u.protocol === 'https:' && /\.trycloudflare\.com$/.test(u.hostname)) ||
+      (/^(localhost|127\.0\.0\.1)$/.test(u.hostname) && (u.protocol === 'http:' || u.protocol === 'https:'))
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function getApiBase(): string {
+  if (typeof window === 'undefined') return BUILD_API_BASE;
+  try {
+    const fromLink = new URLSearchParams(window.location.search).get('api');
+    if (fromLink) {
+      const clean = fromLink.replace(/\/$/, '');
+      if (isAllowedOverride(clean)) {
+        window.localStorage.setItem(STORAGE_KEY, clean);
+        return clean;
+      }
+    }
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved && isAllowedOverride(saved)) return saved;
+  } catch {
+    // Storage blocked (private mode): fall through to the build setting.
+  }
+  return BUILD_API_BASE;
+}
+
+const isLocalUrl = (url: string) => /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(url);
+
+export function backendHint(): { short: string; long: string } {
+  const pageIsLocal =
+    typeof window === 'undefined' || /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
+  const apiIsLocal = isLocalUrl(getApiBase());
+  if (apiIsLocal && pageIsLocal) {
+    return {
+      short: 'Backend not reachable at localhost:8000 · run ./dev.sh',
+      long: 'Check that the backend is running on port 8000 (./dev.sh starts it), then search again.',
+    };
+  }
+  if (apiIsLocal) {
+    return {
+      short: 'Search is not connected on this site',
+      long: 'This site has no search backend connected. Open it with the link from ./tunnel.sh (it ends in ?api=…).',
+    };
+  }
+  return {
+    short: 'Search service is offline · try again later',
+    long: 'The search service did not respond. It may be starting up; try again in a minute.',
+  };
+}
 
 export async function searchResearch(
   topic: string,
   maxResults: number = 5
 ): Promise<SearchResponse> {
-  const response = await fetch(`${API_BASE}/search`, {
+  const response = await fetch(`${getApiBase()}/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ topic, max_results: maxResults }),
