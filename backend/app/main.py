@@ -134,6 +134,25 @@ def _check_rate_limit(request: Request) -> None:
         log.append(now)
 
 
+def _stored_papers_like(query_vec, load_paper_objects) -> list:
+    """Papers already in Postgres closest to the query, ignoring the cache's
+    freshness and score thresholds. Used only when arXiv cannot be reached."""
+    if query_vec is None:
+        return []
+    try:
+        from .db.connection import SessionLocal
+        from .db.repository import search_similar_with_ttl
+        with SessionLocal() as s:
+            rows = search_similar_with_ttl(
+                s, query_vec, top_k=config.ARXIV_CANDIDATES,
+                max_age_hours=24 * 365 * 10, model_name=EMBED_MODEL,
+            )
+            return load_paper_objects(s, [aid for aid, _ in rows])
+    except Exception:
+        logger.exception("stored-paper fallback failed")
+        return []
+
+
 def _usable_insight(insight) -> bool:
     """False for the placeholders the LLM layer returns when extraction fails."""
     if not isinstance(insight, dict) or insight.get("tldr") == "Error":
@@ -276,11 +295,17 @@ def search(req: SearchRequest, request: Request):
                 try:
                     raw_papers = search_papers(topic, max_results=config.ARXIV_CANDIDATES)
                 except Exception as e:
-                    logger.exception("arXiv search failed")
-                    raise HTTPException(
-                        status_code=503,
-                        detail="arXiv rate limit reached or service unavailable. Please try again in a few seconds.",
-                    ) from e
+                    # arXiv refused (rate limit) or is down. Answer from papers
+                    # already stored for similar topics rather than failing.
+                    logger.exception("arXiv search failed; trying the stored papers")
+                    raw_papers = _stored_papers_like(query_vec, load_paper_objects)
+                    if not raw_papers:
+                        raise HTTPException(
+                            status_code=503,
+                            detail="arXiv rate limit reached or service unavailable. Please try again in a few seconds.",
+                        ) from e
+                    cache_path = "warm"
+                    telemetry.incr("arxiv_fallback_to_store")
             if not raw_papers:
                 raise HTTPException(
                     status_code=404,
