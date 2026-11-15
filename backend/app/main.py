@@ -29,6 +29,8 @@ from .llm_service import (
 )
 from .pipeline_cache import save_papers_and_embeddings, save_insights
 
+logger = logging.getLogger(__name__)
+
 def _calibrate_scores(papers, topic: str):
     """Map raw cosine onto a calibrated [0..1] score with additive keyword boosting.
 
@@ -235,8 +237,7 @@ def search(req: SearchRequest, request: Request):
         try:
             query_vec = embed_text(topic).tolist()
         except Exception:
-            import logging
-            logging.getLogger(__name__).exception("query embed failed")
+            logger.exception("query embed failed")
             query_vec = None
 
         cache_hits: list = []
@@ -259,8 +260,7 @@ def search(req: SearchRequest, request: Request):
                             p.relevance_score = score_by_id.get(p.arxiv_id, 0.0)
                         cache_hits = hydrated
             except Exception:
-                import logging
-                logging.getLogger(__name__).exception("cache-first lookup failed")
+                logger.exception("cache-first lookup failed")
 
         if cache_hits:
             cache_path = "warm"
@@ -273,7 +273,14 @@ def search(req: SearchRequest, request: Request):
         else:
             # --- 1b. Fallback: fetch from arxiv (cache cold or weak) ---
             with telemetry.timer("stage_arxiv"):
-                raw_papers = search_papers(topic, max_results=config.ARXIV_CANDIDATES)
+                try:
+                    raw_papers = search_papers(topic, max_results=config.ARXIV_CANDIDATES)
+                except Exception as e:
+                    logger.exception("arXiv search failed")
+                    raise HTTPException(
+                        status_code=503,
+                        detail="arXiv rate limit reached or service unavailable. Please try again in a few seconds.",
+                    ) from e
             if not raw_papers:
                 raise HTTPException(
                     status_code=404,
@@ -290,8 +297,7 @@ def search(req: SearchRequest, request: Request):
                         EMBED_MODEL,
                     )
             except Exception:
-                import logging
-                logging.getLogger(__name__).exception("embedding cache read failed")
+                logger.exception("embedding cache read failed")
 
             with telemetry.timer("stage_rank"):
                 ranked_papers, ranked_vectors = rank_with_cached_vectors(
@@ -308,8 +314,7 @@ def search(req: SearchRequest, request: Request):
             try:
                 save_papers_and_embeddings(ranked_papers, ranked_vectors, EMBED_MODEL)
             except Exception:
-                import logging
-                logging.getLogger(__name__).exception("paper cache write failed")
+                logger.exception("paper cache write failed")
 
         # --- 3. Insights: cached first, then Groq for the misses ---
         from .db.connection import SessionLocal
@@ -324,8 +329,7 @@ def search(req: SearchRequest, request: Request):
                     MODEL,
                 )
         except Exception:
-            import logging
-            logging.getLogger(__name__).exception("insight cache read failed")
+            logger.exception("insight cache read failed")
 
         missing = [p for p in top_papers if p.arxiv_id not in cached]
         telemetry.incr("insights_requested", len(top_papers))
@@ -359,8 +363,7 @@ def search(req: SearchRequest, request: Request):
             try:
                 save_insights(list(fresh_by_id.items()), MODEL)
             except Exception:
-                import logging
-                logging.getLogger(__name__).exception("insight cache write failed")
+                logger.exception("insight cache write failed")
 
         # --- 3b. Grounding: flag insight terms that are not in the abstract ---
         for p in top_papers:
@@ -526,7 +529,7 @@ def search(req: SearchRequest, request: Request):
     except Exception as e:
         telemetry.incr("search_error")
         # Full details go to the server log; clients get a generic message.
-        logging.getLogger(__name__).exception("search pipeline failed")
+        logger.exception("search pipeline failed")
         raise HTTPException(
             status_code=500,
             detail="The search failed on the server. Please try again.",
