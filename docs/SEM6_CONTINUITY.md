@@ -62,58 +62,6 @@ queries. So the Sem 7 research question is:
 
 Copy `eval/results/summary.md` and the PNGs into the report.
 
-## Results: answering the research question
-
-Measured on 816 arXiv papers from six categories (cs.CL, cs.LG, cs.CV, cs.IR,
-cs.RO, stat.ML), five noise seeds; full tables in `eval/results/summary.md`.
-
-| System | nDCG@10 clean | 50% char noise | 50% word dropout | 50% OOV | Loss at 50% OOV |
-|---|---|---|---|---|---|
-| BM25 (lexical) | 0.983 | 0.900 | 0.843 | 0.843 | -0.140 |
-| Hybrid (BM25 + MiniLM, RRF) | 0.979 | 0.891 | 0.815 | 0.742 | -0.237 |
-| bge-small-en-v1.5 | 0.961 | 0.804 | 0.718 | 0.607 | -0.354 |
-| all-MiniLM-L6-v2 (default) | 0.950 | 0.777 | 0.698 | 0.524 | -0.426 |
-| hash-ngram (subword, no semantics) | 0.301 | 0.236 | 0.224 | 0.158 | -0.143 |
-
-**Answer, in three parts.**
-
-1. **The Sem 6 trade-off does not reappear in the same form.** In Sem 6 the
-   clean winner (BERT) lost under heavy noise. Here the lexical system (BM25)
-   wins both clean and noisy, so there is no crossover to report on this task.
-2. **The robustness half of the Sem 6 finding does carry over.** WordPiece
-   encoders lose the most under out-of-vocabulary noise (MiniLM -0.43, bge
-   -0.35 at 50%), as BERT did in Sem 6, while token-matching and subword
-   systems degrade least (BM25 -0.14, hash-ngram -0.14).
-3. **Hybrid retrieval reduces the gap but does not remove it.** Fusing BM25
-   with MiniLM lifts MiniLM's 50% OOV score from 0.524 to 0.742 and costs
-   only 0.004 on clean queries, but BM25 alone is still higher under every
-   noise type.
-
-**Why BM25 does so well here (threat to validity).** The task uses each
-paper's title as the query and its abstract as the only relevant document.
-78.6% of title content words also appear in the paper's own abstract
-(measured on this corpus), so exact word matching is rewarded far more than it
-would be for real, shorter topic queries. Read the BM25 numbers as an upper
-bound for lexical matching, not as proof that dense retrieval is worse for
-users.
-
-**Other limits on these numbers.** The intervals come from five noise seeds
-over the same 816 queries, so they show noise variance, not query variance; no
-significance test separates close systems (BM25 0.983 vs hybrid 0.979); one
-corpus of six categories; pretrained FastText and GloVe baselines were not
-run.
-
-**Implication for the product.** The live app defaults to MiniLM with hybrid
-off. On this evidence `HYBRID_RETRIEVAL=1` is the safer default for noisy,
-typo-prone queries; a test set of real, human-judged topic queries is the
-next step before changing it.
-
-**Cache thresholds.** The semantic cache serves only short (<= 2 word)
-queries, so its thresholds were measured on two-word queries by replaying the
-cache rule (`eval/calibrate_thresholds.py`): `CACHE_TOP_SCORE=0.46` and
-`CACHE_STRONG_SCORE=0.41` serve 8.2% of short queries from cache with 72% of
-served hits on-topic (on-topic = shares an arXiv category; base rate 35%).
-
 ## Limitations to state in the report
 
 - Title-as-query is a proxy; real queries are shorter and vaguer.

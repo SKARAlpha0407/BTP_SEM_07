@@ -1,15 +1,12 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from typing import Any, Dict, List
 import os
-import logging
 import math
-import threading
 import time
-from collections import defaultdict, deque
 
 from . import config, telemetry
 from .arxiv_client import search_papers
@@ -28,8 +25,6 @@ from .llm_service import (
     MODEL,
 )
 from .pipeline_cache import save_papers_and_embeddings, save_insights
-
-logger = logging.getLogger(__name__)
 
 def _calibrate_scores(papers, topic: str):
     """Map raw cosine onto a calibrated [0..1] score with additive keyword boosting.
@@ -84,80 +79,21 @@ if not os.environ.get("GROQ_API_KEY"):
 app = FastAPI(title="Kavosh API")
 
 # ---------------------------------------------------------------------------
-# CORS: local dev and the deployed site (plus its preview deployments) only.
-# No cookies are used, so credentials stay off. Configure via ALLOWED_ORIGINS
-# and ALLOWED_ORIGIN_REGEX.
+# CORS — allow the Next.js dev server (localhost:3000) to call this API.
+# Both localhost and 127.0.0.1 variants are listed so neither origin gets
+# blocked depending on how the browser resolves localhost.
 # ---------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.ALLOWED_ORIGINS,
-    allow_origin_regex=config.ALLOWED_ORIGIN_REGEX or None,
-    allow_credentials=False,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
-# ---------------------------------------------------------------------------
-# Rate limit for /search: a sliding one-minute window per client. When the API
-# is shared through a Cloudflare tunnel, Cloudflare puts the visitor's address
-# in CF-Connecting-IP (and overwrites any value a client sends).
-# ---------------------------------------------------------------------------
-_search_log: dict[str, deque] = defaultdict(deque)
-_search_lock = threading.Lock()
-
-
-def _client_id(request: Request) -> str:
-    return (
-        request.headers.get("cf-connecting-ip")
-        or (request.client.host if request.client else "unknown")
-    )
-
-
-def _check_rate_limit(request: Request) -> None:
-    limit = config.SEARCH_RATE_LIMIT
-    if limit <= 0:
-        return
-    now = time.monotonic()
-    key = _client_id(request)
-    with _search_lock:
-        log = _search_log[key]
-        while log and now - log[0] > 60:
-            log.popleft()
-        if len(log) >= limit:
-            retry = int(60 - (now - log[0])) + 1
-            telemetry.incr("search_rate_limited")
-            raise HTTPException(
-                status_code=429,
-                detail=f"Too many searches. Try again in {retry} s.",
-                headers={"Retry-After": str(retry)},
-            )
-        log.append(now)
-
-
-def _stored_papers_like(query_vec, load_paper_objects) -> list:
-    """Papers already in Postgres closest to the query, ignoring the cache's
-    freshness and score thresholds. Used only when arXiv cannot be reached."""
-    if query_vec is None:
-        return []
-    try:
-        from .db.connection import SessionLocal
-        from .db.repository import search_similar_with_ttl
-        with SessionLocal() as s:
-            rows = search_similar_with_ttl(
-                s, query_vec, top_k=config.ARXIV_CANDIDATES,
-                max_age_hours=24 * 365 * 10, model_name=EMBED_MODEL,
-            )
-            return load_paper_objects(s, [aid for aid, _ in rows])
-    except Exception:
-        logger.exception("stored-paper fallback failed")
-        return []
-
-
-def _usable_insight(insight) -> bool:
-    """False for the placeholders the LLM layer returns when extraction fails."""
-    if not isinstance(insight, dict) or insight.get("tldr") == "Error":
-        return False
-    return any(insight.get(k) not in (None, "", "Error", "N/A") for k in ("tldr", "problem", "methods"))
 
 @app.middleware("http")
 async def add_cache_control(request, call_next):
@@ -236,8 +172,7 @@ def metrics():
 
 
 @app.post("/search", response_model=SearchResponse)
-def search(req: SearchRequest, request: Request):
-    _check_rate_limit(request)
+def search(req: SearchRequest):
     topic = req.topic.strip()
     t_start = time.perf_counter()
     telemetry.incr("search_total")
@@ -256,7 +191,8 @@ def search(req: SearchRequest, request: Request):
         try:
             query_vec = embed_text(topic).tolist()
         except Exception:
-            logger.exception("query embed failed")
+            import logging
+            logging.getLogger(__name__).exception("query embed failed")
             query_vec = None
 
         cache_hits: list = []
@@ -279,7 +215,8 @@ def search(req: SearchRequest, request: Request):
                             p.relevance_score = score_by_id.get(p.arxiv_id, 0.0)
                         cache_hits = hydrated
             except Exception:
-                logger.exception("cache-first lookup failed")
+                import logging
+                logging.getLogger(__name__).exception("cache-first lookup failed")
 
         if cache_hits:
             cache_path = "warm"
@@ -288,24 +225,10 @@ def search(req: SearchRequest, request: Request):
             ranked_vectors = []
             top_papers = ranked_papers[: req.max_results]
             _calibrate_scores(top_papers, topic)
-            top_papers.sort(key=lambda p: p.relevance_score or 0.0, reverse=True)
         else:
             # --- 1b. Fallback: fetch from arxiv (cache cold or weak) ---
             with telemetry.timer("stage_arxiv"):
-                try:
-                    raw_papers = search_papers(topic, max_results=config.ARXIV_CANDIDATES)
-                except Exception as e:
-                    # arXiv refused (rate limit) or is down. Answer from papers
-                    # already stored for similar topics rather than failing.
-                    logger.exception("arXiv search failed; trying the stored papers")
-                    raw_papers = _stored_papers_like(query_vec, load_paper_objects)
-                    if not raw_papers:
-                        raise HTTPException(
-                            status_code=503,
-                            detail="arXiv rate limit reached or service unavailable. Please try again in a few seconds.",
-                        ) from e
-                    cache_path = "warm"
-                    telemetry.incr("arxiv_fallback_to_store")
+                raw_papers = search_papers(topic, max_results=config.ARXIV_CANDIDATES)
             if not raw_papers:
                 raise HTTPException(
                     status_code=404,
@@ -322,7 +245,8 @@ def search(req: SearchRequest, request: Request):
                         EMBED_MODEL,
                     )
             except Exception:
-                logger.exception("embedding cache read failed")
+                import logging
+                logging.getLogger(__name__).exception("embedding cache read failed")
 
             with telemetry.timer("stage_rank"):
                 ranked_papers, ranked_vectors = rank_with_cached_vectors(
@@ -334,12 +258,12 @@ def search(req: SearchRequest, request: Request):
                     )
             top_papers = ranked_papers[: req.max_results]
             _calibrate_scores(top_papers, topic)
-            top_papers.sort(key=lambda p: p.relevance_score or 0.0, reverse=True)
 
             try:
                 save_papers_and_embeddings(ranked_papers, ranked_vectors, EMBED_MODEL)
             except Exception:
-                logger.exception("paper cache write failed")
+                import logging
+                logging.getLogger(__name__).exception("paper cache write failed")
 
         # --- 3. Insights: cached first, then Groq for the misses ---
         from .db.connection import SessionLocal
@@ -354,7 +278,8 @@ def search(req: SearchRequest, request: Request):
                     MODEL,
                 )
         except Exception:
-            logger.exception("insight cache read failed")
+            import logging
+            logging.getLogger(__name__).exception("insight cache read failed")
 
         missing = [p for p in top_papers if p.arxiv_id not in cached]
         telemetry.incr("insights_requested", len(top_papers))
@@ -379,16 +304,13 @@ def search(req: SearchRequest, request: Request):
                 p.summary = fresh_by_id[p.arxiv_id]
             else:
                 p.summary = None
-            # A failed extraction counts as "no summary", so the UI shows the
-            # abstract instead of "Error" in every field.
-            if p.summary is not None and not _usable_insight(p.summary):
-                p.summary = None
 
         if fresh_by_id:
             try:
                 save_insights(list(fresh_by_id.items()), MODEL)
             except Exception:
-                logger.exception("insight cache write failed")
+                import logging
+                logging.getLogger(__name__).exception("insight cache write failed")
 
         # --- 3b. Grounding: flag insight terms that are not in the abstract ---
         for p in top_papers:
@@ -553,12 +475,10 @@ def search(req: SearchRequest, request: Request):
         raise
     except Exception as e:
         telemetry.incr("search_error")
-        # Full details go to the server log; clients get a generic message.
-        logger.exception("search pipeline failed")
-        raise HTTPException(
-            status_code=500,
-            detail="The search failed on the server. Please try again.",
-        ) from e
+        # Surface the real traceback in Terminal 1 instead of a bare "500".
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"pipeline error: {e}")
 
 
 @app.exception_handler(RequestValidationError)

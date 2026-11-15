@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ForceGraph3D from 'react-force-graph-3d';
 import * as THREE from 'three';
 import { ArrowUpRight, X } from 'lucide-react';
-import { safeArxivUrl } from '../lib/api';
 
 /*
  * Reading map. Design rules: .claude/skills/kavosh-ui/SKILL.md
@@ -48,6 +47,8 @@ type Props = {
 
 const endId = (end: number | GraphNode) => (typeof end === 'object' ? end.id : end);
 
+/** arXiv returns http:// entry URLs; links should be https. */
+const https = (url?: string) => (url ? url.replace(/^http:\/\//, 'https://') : '');
 const arxivId = (url?: string) => (url ? url.split('/').pop() ?? '' : '');
 
 const LINK_PILL =
@@ -55,16 +56,14 @@ const LINK_PILL =
 
 /** arXiv page and PDF buttons for a paper in the map. */
 function PaperLinks({ node }: { node: GraphNode }) {
-  const page = safeArxivUrl(node.arxiv_url);
-  const pdf = safeArxivUrl(node.pdf_url);
-  if (!page && !pdf) {
+  if (!node.arxiv_url && !node.pdf_url) {
     return <p className="text-[12px] text-muted">Links appear after the backend restarts.</p>;
   }
   return (
     <div className="flex flex-wrap gap-2">
-      {page && (
+      {node.arxiv_url && (
         <a
-          href={page}
+          href={https(node.arxiv_url)}
           target="_blank"
           rel="noreferrer"
           className={`${LINK_PILL} border-line text-ink-2 hover:border-accent hover:text-accent`}
@@ -72,9 +71,9 @@ function PaperLinks({ node }: { node: GraphNode }) {
           arXiv page <ArrowUpRight className="h-3 w-3" aria-hidden />
         </a>
       )}
-      {pdf && (
+      {node.pdf_url && (
         <a
-          href={pdf}
+          href={https(node.pdf_url)}
           target="_blank"
           rel="noreferrer"
           className={`${LINK_PILL} border-accent text-accent hover:bg-accent hover:text-accent-ink`}
