@@ -1,4 +1,3 @@
-import logging
 import re
 
 import arxiv
@@ -30,7 +29,6 @@ def _escape(topic: str) -> str:
 # One shared client: arXiv asks for <= 1 request every 3 seconds. The client
 # enforces the delay between calls and retries transient 5xx / empty pages.
 _client = arxiv.Client(page_size=50, delay_seconds=3.0, num_retries=3)
-logger = logging.getLogger(__name__)
 
 
 def search_papers(topic: str, max_results: int = 30) -> List[Paper]:
@@ -50,38 +48,27 @@ def search_papers(topic: str, max_results: int = 30) -> List[Paper]:
             sort_by=arxiv.SortCriterion.Relevance,
         )
         results = []
-        try:
-            for result in client.results(search):
-                title = result.title.replace("\n", " ").strip()
-                abstract = result.summary.replace("\n", " ").strip()
-                arxiv_id = result.entry_id.split("/")[-1]
-                results.append(
-                    Paper(
-                        title=title,
-                        authors=[author.name for author in result.authors],
-                        abstract=abstract,
-                        arxiv_id=arxiv_id,
-                        arxiv_url=result.entry_id,
-                        pdf_url=result.pdf_url,
-                        published=result.published.strftime("%Y-%m-%d"),
-                        categories=result.categories,
-                    )
+        for result in client.results(search):
+            title = result.title.replace("\n", " ").strip()
+            abstract = result.summary.replace("\n", " ").strip()
+            arxiv_id = result.entry_id.split("/")[-1]
+            results.append(
+                Paper(
+                    title=title,
+                    authors=[author.name for author in result.authors],
+                    abstract=abstract,
+                    arxiv_id=arxiv_id,
+                    arxiv_url=result.entry_id,
+                    pdf_url=result.pdf_url,
+                    published=result.published.strftime("%Y-%m-%d"),
+                    categories=result.categories,
                 )
-        except arxiv.HTTPError as e:
-            if e.status == 429:
-                raise RuntimeError("arXiv rate limit reached") from e
-            raise RuntimeError(f"arXiv request failed (HTTP {e.status})") from e
+            )
         return results
 
     # Fetch from both sources
-    # The shared client already waits 3 s between requests (arXiv's limit).
     all_results = fetch_papers(all_query, max_results)
-    try:
-        ti_results = fetch_papers(ti_query, 10)  # smaller limit for title matches
-    except RuntimeError:
-        # The title query only refines the order; keep the main results.
-        logger.warning("arXiv title query failed; using the main query only", exc_info=True)
-        ti_results = []
+    ti_results = fetch_papers(ti_query, 10) # smaller limit for title matches
 
     # Merge and deduplicate by arxiv_id
     merged = {}

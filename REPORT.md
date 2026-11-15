@@ -3,7 +3,7 @@
 ## 1. Overview
 Kavosh (Persian for "exploration"; formerly the AI Research Copilot) is a full-stack application designed to help researchers discover and synthesize information from arXiv papers. It uses a Next.js 16 frontend (Pages router) and a FastAPI backend. The application retrieves papers based on a topic, reranks them using a local MiniLM embedding model (CPU-only), extracts structured insights and synthesis via the Groq API (gpt-oss-20b), and visualizes the research landscape as a force-directed graph with VIBGYOR color-coding by relevance rank.
 
-**New in this version:** A persistent pgvector cache (Postgres 16 + pgvector 0.8.0) stores paper embeddings and LLM-generated insights. The search pipeline now uses a **two-tier retrieval** strategy (not to be confused with the optional BM25 + dense hybrid ranking, `HYBRID_RETRIEVAL`): a cache-first lookup with semantic similarity and TTL filtering (12-hour max age) can skip arXiv entirely on warm topics (~1.4s), while cold topics fall back to arXiv fetch + cached-vector reuse (~8.6s). This yields a ~5.8× speedup on repeat queries.
+**New in this version:** A persistent pgvector cache (Postgres 16 + pgvector 0.8.0) stores paper embeddings and LLM-generated insights. The search pipeline now uses a **hybrid retrieval** strategy: a cache-first lookup with semantic similarity and TTL filtering (12-hour max age) can skip arXiv entirely on warm topics (~1.4s), while cold topics fall back to arXiv fetch + cached-vector reuse (~8.6s). This yields a ~5.8× speedup on repeat queries.
 
 ## 2. End-to-End Flow
 
@@ -12,7 +12,7 @@ flowchart LR
     U([User])
     subgraph FE["Frontend · Next.js :3000"]
         IDX["pages/index.tsx<br/>search, state, render"]
-        RM["components/ReadingMap.tsx<br/>3D force graph, colour = publication year"]
+        RM["components/ReadingMap.tsx<br/>force-graph, VIBGYOR by rank"]
         API["lib/api.ts<br/>fetch wrapper"]
     end
     subgraph BE["Backend · FastAPI :8000"]
@@ -55,7 +55,7 @@ flowchart LR
 
 The user enters a topic in `pages/index.tsx`, which triggers a search via `lib/api.ts`. The FastAPI `main.py:search` handler orchestrates the pipeline:
 
-1. **Cache-first lookup:** Embed the topic, query `paper_embeddings` via HNSW cosine similarity with a 12-hour TTL. If the top score ≥ `CACHE_TOP_SCORE` (0.46) and at least `max_results` hits score ≥ `CACHE_STRONG_SCORE` (0.41), both measured on short queries in `eval/results/thresholds.json`,, hydrate `Paper` objects from `papers` table and **skip arXiv entirely**.
+1. **Cache-first lookup:** Embed the topic, query `paper_embeddings` via HNSW cosine similarity with a 12-hour TTL. If top score ≥ 0.4 and enough strong hits (≥ `max_results`), hydrate `Paper` objects from `papers` table and **skip arXiv entirely**.
 2. **Candidate Retrieval (fallback):** If cache miss or weak hits, call `arxiv_client.search_papers` (dual-search + tier sort) to fetch from arXiv API.
 3. **Semantic Ranking:** `embedding_service.rank_papers` (or `rank_with_cached_vectors` which reuses cached vectors, encoding only new abstracts).
 4. **Insight Extraction:** Read `paper_insights` first; call `extract_insights_batch` only for misses; write fresh insights back.
@@ -82,7 +82,7 @@ sequenceDiagram
     %% Cache-first lookup
     M->>DB: search_similar_with_ttl(query_vec, top_k=30, max_age_hours=12)
     DB-->>M: rows[(arxiv_id, score)]
-    alt cache hit (top_score ≥ 0.46 ∧ strong_hits ≥ max_results)
+    alt cache hit (top_score ≥ 0.4 ∧ strong_hits ≥ max_results)
         M->>DB: load_paper_objects(strong_ids)
         DB-->>M: hydrated Paper[]
         M->>M: ranked_papers = cache_hits
@@ -125,7 +125,7 @@ sequenceDiagram
     M-->>C: {papers, synthesis, graph}
 ```
 
-1. **Cache-First Lookup (new):** `search_similar_with_ttl` in `backend/app/db/repository.py` queries the HNSW index on `paper_embeddings` with a 12-hour TTL filter. If the top score ≥ `CACHE_TOP_SCORE` (0.46) and at least `max_results` papers score ≥ `CACHE_STRONG_SCORE` (0.41), the pipeline hydrates full `Paper` objects from the `papers` table via `load_paper_objects` and skips arXiv entirely.
+1. **Cache-First Lookup (new):** `search_similar_with_ttl` in `backend/app/db/repository.py` queries the HNSW index on `paper_embeddings` with a 12-hour TTL filter. If the top score ≥ 0.4 and at least `max_results` papers score ≥ 0.35, the pipeline hydrates full `Paper` objects from the `papers` table via `load_paper_objects` and skips arXiv entirely.
 2. **Candidate Retrieval:** Implemented by `search_papers` in `backend/app/arxiv_client.py:37`. Returns a `List[Paper]` from arXiv API via dual-search strategy. Only reached on cache miss/weak cache.
 3. **Semantic Ranking:** 
    - Cold path: `rank_papers` in `backend/app/embedding_service.py:42` embeds query + all abstracts on CPU.

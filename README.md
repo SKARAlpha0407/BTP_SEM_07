@@ -35,9 +35,8 @@ laptop. To reach it from anywhere:
                 # https://btp-sem-07.vercel.app/?api=https://<name>.trycloudflare.com
 ```
 
-Open or share that link and press **Connect** when the site asks (it asks
-before using any backend from a link, because anyone can create a
-trycloudflare.com address). The site remembers the choice on each device, so later visits work without `?api=` until the next tunnel. The
+Open or share that link. The site remembers the backend address on each
+device, so later visits work without `?api=` until the next tunnel. The
 tunnel URL changes every time `./tunnel.sh` starts, and search works only
 while both commands are running. For a permanent backend, host it (e.g. with
 `docker-compose.yml`) and set `NEXT_PUBLIC_API_BASE` in the Vercel project.

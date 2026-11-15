@@ -54,16 +54,3 @@ RRF_K = _i("RRF_K", 60)
 
 # --- Graph ------------------------------------------------------------------
 GRAPH_MAX_NODES = _i("GRAPH_MAX_NODES", 30)
-
-# --- Access control -------------------------------------------------------
-# Origins allowed to call the API from a browser: local dev plus the deployed
-# site and its own preview deployments, not every *.vercel.app site.
-ALLOWED_ORIGINS = [o.strip() for o in os.environ.get(
-    "ALLOWED_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000,https://btp-sem-07.vercel.app",
-).split(",") if o.strip()]
-ALLOWED_ORIGIN_REGEX = os.environ.get("ALLOWED_ORIGIN_REGEX", r"https://btp-sem-07(-[a-z0-9-]+)?\.vercel\.app")
-# Searches per client per minute (each one can cost several LLM calls).
-# Off (0) by default while the app is demoed; set e.g. 12 before opening it
-# to the public.
-SEARCH_RATE_LIMIT = _i("SEARCH_RATE_LIMIT", 0)

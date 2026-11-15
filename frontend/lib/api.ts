@@ -34,10 +34,9 @@ export interface SearchResponse {
 }
 
 // Where the FastAPI backend lives, in order of preference:
-// 1. A tunnel URL this device has accepted from a share link
-//    (`?api=https://<name>.trycloudflare.com`, see ./tunnel.sh). A link never
-//    switches the backend by itself: anyone can create a trycloudflare.com
-//    address, so the page asks first (pendingLinkBackend / acceptBackend).
+// 1. A tunnel URL given in the page link, `?api=https://<name>.trycloudflare.com`
+//    (see ./tunnel.sh). It is remembered on this device, so later visits work
+//    without the parameter until a new link replaces it.
 // 2. NEXT_PUBLIC_API_BASE, set in the deployment and read at build time.
 // 3. A backend on the same machine (development).
 const BUILD_API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/$/, '');
@@ -57,64 +56,23 @@ function isAllowedOverride(url: string) {
   }
 }
 
-function savedBackend(): string | null {
-  try {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    return saved && isAllowedOverride(saved) ? saved : null;
-  } catch {
-    return null; // storage blocked (private mode)
-  }
-}
-
 export function getApiBase(): string {
   if (typeof window === 'undefined') return BUILD_API_BASE;
-  return savedBackend() ?? BUILD_API_BASE;
-}
-
-/** A backend named in the page link that this device has not accepted yet. */
-export function pendingLinkBackend(): string | null {
-  if (typeof window === 'undefined') return null;
-  const fromLink = new URLSearchParams(window.location.search).get('api');
-  if (!fromLink) return null;
-  const clean = fromLink.replace(/\/$/, '');
-  if (!isAllowedOverride(clean) || clean === getApiBase()) {
-    clearLinkParam();
-    return null;
-  }
-  return clean;
-}
-
-/** Use (or decline) the backend from the link, then tidy the address bar. */
-export function acceptBackend(url: string | null) {
-  if (url && isAllowedOverride(url)) {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, url);
-    } catch {
-      // Without storage the choice lasts only until reload.
-    }
-  }
-  clearLinkParam();
-}
-
-function clearLinkParam() {
-  const u = new URL(window.location.href);
-  if (!u.searchParams.has('api')) return;
-  u.searchParams.delete('api');
-  window.history.replaceState(null, '', u.pathname + u.search + u.hash);
-}
-
-/**
- * Paper links come from the backend; only open them if they point at arXiv,
- * so a rogue backend cannot turn "PDF" into a link to anywhere.
- */
-export function safeArxivUrl(url?: string | null): string | undefined {
-  if (!url) return undefined;
   try {
-    const u = new URL(url.replace(/^http:\/\//, 'https://'));
-    return u.protocol === 'https:' && /(^|\.)arxiv\.org$/.test(u.hostname) ? u.toString() : undefined;
+    const fromLink = new URLSearchParams(window.location.search).get('api');
+    if (fromLink) {
+      const clean = fromLink.replace(/\/$/, '');
+      if (isAllowedOverride(clean)) {
+        window.localStorage.setItem(STORAGE_KEY, clean);
+        return clean;
+      }
+    }
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved && isAllowedOverride(saved)) return saved;
   } catch {
-    return undefined;
+    // Storage blocked (private mode): fall through to the build setting.
   }
+  return BUILD_API_BASE;
 }
 
 const isLocalUrl = (url: string) => /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(url);
