@@ -1,5 +1,5 @@
+import logging
 import re
-import time
 
 import arxiv
 from dataclasses import dataclass
@@ -30,6 +30,7 @@ def _escape(topic: str) -> str:
 # One shared client: arXiv asks for <= 1 request every 3 seconds. The client
 # enforces the delay between calls and retries transient 5xx / empty pages.
 _client = arxiv.Client(page_size=50, delay_seconds=3.0, num_retries=3)
+logger = logging.getLogger(__name__)
 
 
 def search_papers(topic: str, max_results: int = 30) -> List[Paper]:
@@ -73,9 +74,14 @@ def search_papers(topic: str, max_results: int = 30) -> List[Paper]:
         return results
 
     # Fetch from both sources
+    # The shared client already waits 3 s between requests (arXiv's limit).
     all_results = fetch_papers(all_query, max_results)
-    time.sleep(3)  # arXiv allows one request every 3 seconds
-    ti_results = fetch_papers(ti_query, 10) # smaller limit for title matches
+    try:
+        ti_results = fetch_papers(ti_query, 10)  # smaller limit for title matches
+    except RuntimeError:
+        # The title query only refines the order; keep the main results.
+        logger.warning("arXiv title query failed; using the main query only", exc_info=True)
+        ti_results = []
 
     # Merge and deduplicate by arxiv_id
     merged = {}
