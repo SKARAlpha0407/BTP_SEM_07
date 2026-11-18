@@ -317,6 +317,59 @@ not benchmarked; the hash-ngram baseline has no learned semantics.
   hash-ngram −0.031. cs.CV, cs.RO and cs.IR form clear clusters; cs.LG and
   stat.ML overlap heavily.
 
+### 8.5 Related work and design justification
+
+**Lexical and dense retrieval.** BM25 [2] scores documents by exact term
+overlap, weighted by term rarity and document length. It is cheap and a strong
+zero-shot baseline: the BEIR benchmark describes it as "a robust baseline" and
+reports that dense and sparse neural retrievers often generalise worse than
+other approaches [3]. Dense encoders such as MiniLM match by meaning, so they
+can find a paper that never uses the query's words, but a rare term is only one
+of many tokens averaged into a single vector.
+
+**Hybrid retrieval.** Blended RAG [4] combines semantic and keyword queries and
+reports NDCG@10 of 0.87 on TREC-COVID against 0.804 for COCO-DR Large (+8.2%),
+and 0.67 on Natural Questions against 0.633 for monoT5-3B (+5.8%). These are
+the authors' own results on their setup, not a guarantee for other corpora.
+
+**Rank fusion.** BM25 scores are unbounded while cosine similarity lies in
+[−1, 1], so a weighted sum of raw scores needs normalisation to be meaningful.
+Reciprocal Rank Fusion (RRF) [1] uses only rank positions, so no normalisation
+is needed. It scores a document by the sum of 1 / (k + rank) over the rankings
+being fused. Cormack et al. fixed k = 60 in a pilot and found it near-optimal
+on their TREC experiments; that setting was tuned for those collections, not
+for a pool of about 50 candidates like ours.
+
+**What this project measures.** Kavosh fuses BM25 and MiniLM with RRF
+(`HYBRID_RETRIEVAL`, on by default; `k = 60`). The benchmark in 8.3 does not
+show an advantage for the hybrid: its queries are paper titles scored against
+their own abstracts, which share most of their words, and BM25 is best in every
+column. The hybrid does beat MiniLM alone, most under out-of-vocabulary noise
+(nDCG@10 0.742 against 0.524 at 50%, a loss of 0.237 against 0.426), but it
+still loses more than BM25 alone (0.140). Note that BM25 ignores the injected
+tokens, so that noise type behaves like word dropout for it. Whether the hybrid
+helps on short, vague or paraphrased topic queries is not tested here. The
+fusion constant `k` and a `hybrid:bge-small-en-v1.5` variant are also untested,
+and are the natural next experiments.
+
+**References**
+
+1. G. V. Cormack, C. L. A. Clarke and S. Büttcher, "Reciprocal rank fusion
+   outperforms Condorcet and individual rank learning methods," in *Proc. 32nd
+   Int. ACM SIGIR Conf. Research and Development in Information Retrieval*,
+   2009, pp. 758–759, doi: 10.1145/1571941.1572114.
+2. S. Robertson and H. Zaragoza, "The probabilistic relevance framework: BM25
+   and beyond," *Foundations and Trends in Information Retrieval*, 2009,
+   doi: 10.1561/1500000019.
+3. N. Thakur, N. Reimers, A. Rücklé, A. Srivastava and I. Gurevych, "BEIR: A
+   heterogeneous benchmark for zero-shot evaluation of information retrieval
+   models," in *Proc. NeurIPS Datasets and Benchmarks Track*, 2021,
+   arXiv:2104.08663.
+4. K. Sawarkar, A. Mangal and S. R. Solanki, "Blended RAG: Improving RAG
+   (retriever-augmented generation) accuracy with semantic search and hybrid
+   query-based retrievers," in *Proc. IEEE 7th Int. Conf. Multimedia Information
+   Processing and Retrieval (MIPR)*, 2024, arXiv:2404.07220.
+
 ## 9. Testing
 
 - **`tests/`** (pytest, 21 tests, no network, database or API key needed;
