@@ -66,7 +66,7 @@ def search_papers(topic: str, max_results: int = 30) -> List[Paper]:
             )
         return results
 
-        all_results = fetch_papers(all_query, max_results)
+    all_results = fetch_papers(all_query, max_results)
     ti_results = fetch_papers(ti_query, 10) # smaller limit for title matches
 
     # Merge and deduplicate by arxiv_id
