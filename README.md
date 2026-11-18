@@ -83,15 +83,8 @@ need fewer LLM calls.
 ## Results (Sem 6 noise protocol applied to retrieval)
 
 816 arXiv papers from six categories; each paper's title is the query and its
-abstract the relevant document; 5 noise seeds. nDCG@10:
-
-| System | Clean | 50% character noise | 50% word dropout | 50% out-of-vocabulary |
-|---|---|---|---|---|
-| BM25 | 0.983 | 0.900 | 0.843 | 0.843 |
-| Hybrid (BM25 + MiniLM) | 0.979 | 0.891 | 0.815 | 0.742 |
-| bge-small-en-v1.5 | 0.961 | 0.804 | 0.718 | 0.607 |
-| all-MiniLM-L6-v2 (default) | 0.950 | 0.777 | 0.698 | 0.524 |
-| hash-ngram (subword baseline) | 0.301 | 0.236 | 0.224 | 0.158 |
+abstract the relevant document; 5 noise seeds. The full nDCG@10 tables are in
+[REPORT.md §8](REPORT.md#8-evaluation-and-results) and `eval/results/summary.md`.
 
 Dense WordPiece models lose the most under out-of-vocabulary noise, echoing the
 Sem 6 finding for BERT; hybrid retrieval halves that loss. BM25 leads here
