@@ -285,6 +285,7 @@ def search(req: SearchRequest, request: Request):
             ranked_vectors = []
             top_papers = ranked_papers[: req.max_results]
             _calibrate_scores(top_papers, topic)
+            top_papers.sort(key=lambda p: p.relevance_score or 0.0, reverse=True)
         else:
             # Fall back to arXiv when the cache is cold or weak
             if not raw_papers:
@@ -316,6 +317,7 @@ def search(req: SearchRequest, request: Request):
                     )
             top_papers = ranked_papers[: req.max_results]
             _calibrate_scores(top_papers, topic)
+            top_papers.sort(key=lambda p: p.relevance_score or 0.0, reverse=True)
 
             try:
                 save_papers_and_embeddings(ranked_papers, ranked_vectors, EMBED_MODEL)
