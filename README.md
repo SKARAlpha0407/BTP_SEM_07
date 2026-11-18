@@ -61,7 +61,7 @@ need fewer LLM calls.
 - **Semantic ranking** with a swappable embedder (`EMBED_MODEL`, default
   `all-MiniLM-L6-v2` on CPU). Scores are a sigmoid-calibrated cosine with a
   boost for titles containing the query; exact-title matches are pinned first.
-- **Optional hybrid retrieval** (`HYBRID_RETRIEVAL=1`): hand-written BM25 fused
+- **Hybrid retrieval** (on by default; `HYBRID_RETRIEVAL=0` for dense only): hand-written BM25 fused
   with the dense ranking by Reciprocal Rank Fusion.
 - **Persistent cache** in Postgres + pgvector (HNSW, cosine): papers,
   embeddings and LLM summaries are stored; short repeat queries can skip arXiv

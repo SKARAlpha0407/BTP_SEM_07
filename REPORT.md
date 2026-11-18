@@ -87,7 +87,7 @@ are read from the environment.
    merged and tier-sorted (exact title first, then titles containing every
    significant query word). User text is escaped so it cannot change the query.
 4. **Rank** by cosine similarity, reusing stored vectors and embedding only new
-   abstracts. With `HYBRID_RETRIEVAL=1`, BM25 over title + abstract is fused
+   abstracts. With `HYBRID_RETRIEVAL=1` (the default), BM25 over title + abstract is fused
    with the dense ranking by Reciprocal Rank Fusion (`k = 60`).
 5. **Calibrate scores** for display: `sigmoid(10 · (cosine − β))`, with β
    different for short and long queries, plus a `TITLE_BOOST` (+0.15) when the
@@ -235,7 +235,7 @@ Environment variables (see `.env.example`; defaults in `backend/app/config.py`):
 | `GROQ_MODEL` | `openai/gpt-oss-20b` | LLM for summaries, synthesis, cluster names |
 | `DATABASE_URL` | local `research` database | Postgres connection |
 | `EMBED_MODEL` | `all-MiniLM-L6-v2` | Must be 384-d for the live server (also `BAAI/bge-small-en-v1.5`, `hash-ngram:384`) |
-| `HYBRID_RETRIEVAL` | `0` | BM25 + dense fusion |
+| `HYBRID_RETRIEVAL` | `1` | BM25 + dense fusion |
 | `ARXIV_CANDIDATES` | `50` | Candidates fetched per search |
 | `CACHE_TTL_HOURS` | `12` | Freshness window for the cache-first lookup |
 | `CACHE_TOP_SCORE` / `CACHE_STRONG_SCORE` | `0.40` / `0.35` | Cache thresholds (measured values: 0.46 / 0.41, Section 8) |

@@ -49,7 +49,7 @@ TITLE_BOOST = _f("TITLE_BOOST", 0.15)
 
 # --- Retrieval --------------------------------------------------------------
 ARXIV_CANDIDATES = _i("ARXIV_CANDIDATES", 50)
-HYBRID_RETRIEVAL = _b("HYBRID_RETRIEVAL", False)  # BM25 + dense, fused with RRF
+HYBRID_RETRIEVAL = _b("HYBRID_RETRIEVAL", True)  # BM25 + dense, fused with RRF
 RRF_K = _i("RRF_K", 60)
 
 # --- Graph ------------------------------------------------------------------
