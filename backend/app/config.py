@@ -52,5 +52,11 @@ ARXIV_CANDIDATES = _i("ARXIV_CANDIDATES", 50)
 HYBRID_RETRIEVAL = _b("HYBRID_RETRIEVAL", True)  # BM25 + dense, fused with RRF
 RRF_K = _i("RRF_K", 60)
 
+# --- arXiv politeness (avoids HTTP 429) --------------------------------------
+ARXIV_MIN_INTERVAL = _f("ARXIV_MIN_INTERVAL", 3.0)         # seconds between any two arXiv requests
+ARXIV_CACHE_TTL_HOURS = _f("ARXIV_CACHE_TTL_HOURS", 6.0)   # reuse a topic's arXiv results
+ARXIV_COOLDOWN_SECONDS = _f("ARXIV_COOLDOWN_SECONDS", 60.0)  # pause arXiv calls after a 429
+SEARCH_RATE_LIMIT_PER_MIN = _i("SEARCH_RATE_LIMIT_PER_MIN", 10)  # per visitor; 0 turns it off
+
 # --- Graph ------------------------------------------------------------------
 GRAPH_MAX_NODES = _i("GRAPH_MAX_NODES", 30)

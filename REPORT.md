@@ -237,6 +237,10 @@ Environment variables (see `.env.example`; defaults in `backend/app/config.py`):
 | `EMBED_MODEL` | `all-MiniLM-L6-v2` | Must be 384-d for the live server (also `BAAI/bge-small-en-v1.5`, `hash-ngram:384`) |
 | `HYBRID_RETRIEVAL` | `1` | BM25 + dense fusion |
 | `ARXIV_CANDIDATES` | `50` | Candidates fetched per search |
+| `ARXIV_MIN_INTERVAL` | `3` | Seconds between any two arXiv requests |
+| `ARXIV_CACHE_TTL_HOURS` | `6` | How long a topic's arXiv results are reused |
+| `ARXIV_COOLDOWN_SECONDS` | `60` | Pause on arXiv after an HTTP 429 |
+| `SEARCH_RATE_LIMIT_PER_MIN` | `10` | Searches per visitor per minute (`0` = off) |
 | `CACHE_TTL_HOURS` | `12` | Freshness window for the cache-first lookup |
 | `CACHE_TOP_SCORE` / `CACHE_STRONG_SCORE` | `0.40` / `0.35` | Cache thresholds (measured values: 0.46 / 0.41, Section 8) |
 | `CALIB_BETA_SHORT` / `CALIB_BETA_LONG` | `0.30` / `0.35` | Display calibration (measured: 0.19 / 0.40) |

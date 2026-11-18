@@ -25,6 +25,8 @@ def client(monkeypatch):
     monkeypatch.setattr(main, "save_papers_and_embeddings", lambda *a, **k: None)
     monkeypatch.setattr(main, "save_insights", lambda *a, **k: None)
     telemetry.reset()
+    from backend.app import ratelimit
+    ratelimit.reset()
     return TestClient(main.app)
 
 

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,8 +8,8 @@ import os
 import math
 import time
 
-from . import config, telemetry
-from .arxiv_client import search_papers
+from . import config, ratelimit, telemetry
+from .arxiv_client import ArxivUnavailable, search_papers
 from .embedding_service import (
     rank_with_cached_vectors,
     embed_batch,
@@ -171,8 +171,51 @@ def metrics():
     return telemetry.snapshot()
 
 
+def _stale_cached_papers(query_vec, limit: int) -> list:
+    """Closest stored papers regardless of age, used when arXiv is unavailable."""
+    if query_vec is None:
+        return []
+    try:
+        from .db.connection import SessionLocal
+        from .db.repository import search_similar_with_ttl
+        from .pipeline_cache import load_paper_objects
+
+        with SessionLocal() as s:
+            rows = search_similar_with_ttl(
+                s, query_vec, top_k=config.CACHE_TOP_K,
+                max_age_hours=24 * 365, model_name=EMBED_MODEL,
+            )
+            rows = [(aid, sc) for aid, sc in rows if sc >= config.CACHE_STRONG_SCORE][:limit]
+            if not rows:
+                return []
+            papers = load_paper_objects(s, [aid for aid, _ in rows])
+            score_by_id = dict(rows)
+            for p in papers:
+                p.relevance_score = score_by_id.get(p.arxiv_id, 0.0)
+            return papers
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("stale cache lookup failed")
+        return []
+
+
 @app.post("/search", response_model=SearchResponse)
-def search(req: SearchRequest):
+def search(req: SearchRequest, request: Request):
+    allowed, retry_after = ratelimit.check(
+        ratelimit.client_key(
+            request.headers.get("x-forwarded-for"),
+            request.client.host if request.client else None,
+        ),
+        config.SEARCH_RATE_LIMIT_PER_MIN,
+    )
+    if not allowed:
+        telemetry.incr("search_rate_limited")
+        raise HTTPException(
+            status_code=429,
+            detail="Too many searches. Please wait a moment and try again.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     topic = req.topic.strip()
     t_start = time.perf_counter()
     telemetry.incr("search_total")
@@ -218,17 +261,32 @@ def search(req: SearchRequest):
                 import logging
                 logging.getLogger(__name__).exception("cache-first lookup failed")
 
+        raw_papers: list = []
+        if not cache_hits:
+            try:
+                with telemetry.timer("stage_arxiv"):
+                    raw_papers = search_papers(topic, max_results=config.ARXIV_CANDIDATES)
+            except ArxivUnavailable:
+                telemetry.incr("arxiv_unavailable")
+                cache_hits = _stale_cached_papers(query_vec, req.max_results)
+                if not cache_hits:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="arXiv is busy right now. Please try again in a minute.",
+                        headers={"Retry-After": "60"},
+                    )
+                cache_path = "stale"
+
         if cache_hits:
-            cache_path = "warm"
-            telemetry.incr("cache_hit")
+            if cache_path != "stale":
+                cache_path = "warm"
+                telemetry.incr("cache_hit")
             ranked_papers = cache_hits
             ranked_vectors = []
             top_papers = ranked_papers[: req.max_results]
             _calibrate_scores(top_papers, topic)
         else:
             # Fall back to arXiv when the cache is cold or weak
-            with telemetry.timer("stage_arxiv"):
-                raw_papers = search_papers(topic, max_results=config.ARXIV_CANDIDATES)
             if not raw_papers:
                 raise HTTPException(
                     status_code=404,

@@ -1,8 +1,15 @@
+import logging
 import re
+import threading
+import time
 
 import arxiv
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
+
+from . import config
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -26,73 +33,142 @@ def _escape(topic: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
-# One shared client: arXiv asks for <= 1 request every 3 seconds. The client
-# enforces the delay between calls and retries transient 5xx / empty pages.
-_client = arxiv.Client(page_size=50, delay_seconds=3.0, num_retries=3)
+class ArxivUnavailable(Exception):
+    """arXiv could not be reached or is rate-limiting this client."""
+
+
+# One shared client. arXiv asks for at most one request every 3 seconds, so
+# every call goes through _lock and waits out the minimum interval. The library
+# is not allowed to retry: a retry after a 429 only adds load, and a failure is
+# handled by the caller (cooldown, stored papers) instead.
+_client = arxiv.Client(page_size=50, delay_seconds=config.ARXIV_MIN_INTERVAL, num_retries=0)
+_lock = threading.Lock()
+_last_call = 0.0
+_cooldown_until = 0.0
+
+_cache: Dict[Tuple[str, int], Tuple[float, List["Paper"]]] = {}
+_cache_lock = threading.Lock()
+_CACHE_MAX = 200
+
+
+def _cache_get(key):
+    ttl = config.ARXIV_CACHE_TTL_HOURS * 3600
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit and time.monotonic() - hit[0] < ttl:
+            return list(hit[1])
+        _cache.pop(key, None)
+    return None
+
+
+def _cache_put(key, papers):
+    with _cache_lock:
+        if len(_cache) >= _CACHE_MAX:
+            oldest = min(_cache, key=lambda k: _cache[k][0])
+            del _cache[oldest]
+        _cache[key] = (time.monotonic(), list(papers))
+
+
+def reset_state() -> None:
+    global _last_call, _cooldown_until
+    with _lock:
+        _last_call = 0.0
+        _cooldown_until = 0.0
+    with _cache_lock:
+        _cache.clear()
+
+
+def _fetch(query: str, limit: int) -> List[Paper]:
+    """One paced arXiv request. Raises ArxivUnavailable on 429 or any failure."""
+    global _last_call, _cooldown_until
+    with _lock:
+        now = time.monotonic()
+        if now < _cooldown_until:
+            raise ArxivUnavailable("arXiv is rate-limiting; cooling down")
+        wait = config.ARXIV_MIN_INTERVAL - (now - _last_call)
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            search = arxiv.Search(
+                query=query,
+                max_results=limit,
+                sort_by=arxiv.SortCriterion.Relevance,
+            )
+            results = []
+            for result in _client.results(search):
+                results.append(
+                    Paper(
+                        title=result.title.replace("\n", " ").strip(),
+                        authors=[author.name for author in result.authors],
+                        abstract=result.summary.replace("\n", " ").strip(),
+                        arxiv_id=result.entry_id.split("/")[-1],
+                        arxiv_url=result.entry_id,
+                        pdf_url=result.pdf_url,
+                        published=result.published.strftime("%Y-%m-%d"),
+                        categories=result.categories,
+                    )
+                )
+            return results
+        except arxiv.HTTPError as exc:
+            if getattr(exc, "status", None) == 429:
+                _cooldown_until = time.monotonic() + config.ARXIV_COOLDOWN_SECONDS
+                logger.warning("arXiv returned 429; pausing requests for %ss", config.ARXIV_COOLDOWN_SECONDS)
+            raise ArxivUnavailable(str(exc)) from exc
+        except Exception as exc:
+            raise ArxivUnavailable(str(exc)) from exc
+        finally:
+            _last_call = time.monotonic()
+
+
+def _tier(p: Paper, norm_topic: str, topic_words: List[str]) -> int:
+    norm_title = _normalize(p.title)
+    # Exact title match
+    if norm_title == norm_topic:
+        return 0
+    # Title contains all significant words
+    if topic_words and all(word in norm_title for word in topic_words):
+        return 1
+    # Everything else
+    return 2
+
+
+# The title query is skipped when the general query already returned this many
+# papers whose titles contain every significant word of the topic.
+_TITLE_QUERY_SKIP_AT = 3
 
 
 def search_papers(topic: str, max_results: int = 30) -> List[Paper]:
-    client = _client
     safe = _escape(topic)
     if not safe:
         return []
 
-    # Search both all: and ti: fields
-    all_query = f"all:{safe}"
-    ti_query = f'ti:"{safe}"'
+    norm_topic = _normalize(topic)
+    key = (norm_topic, max_results)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
 
-    def fetch_papers(q: str, limit: int) -> List[Paper]:
-        search = arxiv.Search(
-            query=q,
-            max_results=limit,
-            sort_by=arxiv.SortCriterion.Relevance,
-        )
-        results = []
-        for result in client.results(search):
-            title = result.title.replace("\n", " ").strip()
-            abstract = result.summary.replace("\n", " ").strip()
-            arxiv_id = result.entry_id.split("/")[-1]
-            results.append(
-                Paper(
-                    title=title,
-                    authors=[author.name for author in result.authors],
-                    abstract=abstract,
-                    arxiv_id=arxiv_id,
-                    arxiv_url=result.entry_id,
-                    pdf_url=result.pdf_url,
-                    published=result.published.strftime("%Y-%m-%d"),
-                    categories=result.categories,
-                )
-            )
-        return results
+    topic_words = [w for w in norm_topic.split() if len(w) > 3]
 
-    all_results = fetch_papers(all_query, max_results)
-    ti_results = fetch_papers(ti_query, 10) # smaller limit for title matches
+    all_results = _fetch(f"all:{safe}", max_results)
 
-    # Merge and deduplicate by arxiv_id
+    ti_results: List[Paper] = []
+    strong = sum(1 for p in all_results if _tier(p, norm_topic, topic_words) <= 1)
+    if strong < _TITLE_QUERY_SKIP_AT:
+        try:
+            ti_results = _fetch(f'ti:"{safe}"', 10)
+        except ArxivUnavailable:
+            logger.warning("title query failed; using general results only")
+
     merged = {}
-    for p in (ti_results + all_results):
+    for p in ti_results + all_results:
         merged[p.arxiv_id] = p
 
     papers = list(merged.values())
+    papers.sort(key=lambda p: _tier(p, norm_topic, topic_words))
 
-    # Rank title matches first
-    norm_topic = _normalize(topic)
-    topic_words = [w for w in norm_topic.split() if len(w) > 3]
-
-    def get_tier(p: Paper) -> int:
-        norm_title = _normalize(p.title)
-        # Exact title match
-        if norm_title == norm_topic:
-            return 0
-        # Title contains all significant words
-        if all(word in norm_title for word in topic_words) and topic_words:
-            return 1
-        # Everything else
-        return 2
-
-    papers.sort(key=lambda p: get_tier(p))
-
+    if papers:
+        _cache_put(key, papers)
     return papers
 
 
