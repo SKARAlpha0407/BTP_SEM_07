@@ -221,7 +221,7 @@ erDiagram
   dark themes, all text ≥ 4.5:1 contrast), Geist and Geist Mono via
   `next/font`, motion primitives in `components/Motion.tsx` that respect
   `prefers-reduced-motion`. The design rules are recorded in
-  `.claude/skills/kavosh-ui/SKILL.md`.
+  `docs/DESIGN.md`.
 - **Backend address** (`lib/api.ts`): a `?api=` tunnel link (remembered per
   device), else `NEXT_PUBLIC_API_BASE`, else `http://localhost:8000`.
 
@@ -383,9 +383,8 @@ BTP_SEM_07/
 │                       calibration, embedding map; results/ committed
 ├── tests/              pytest suite
 ├── qa/                 live regression script
-├── docs/               SEM6_CONTINUITY.md
+├── docs/               SEM6_CONTINUITY.md, DESIGN.md
 ├── specs/              earlier design notes
-├── .claude/skills/     kavosh-ui design system
 ├── docker-compose.yml, dev.sh, tunnel.sh, .env.example
 └── README.md, REPORT.md
 ```

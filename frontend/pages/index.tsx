@@ -6,7 +6,7 @@ import { Paper, SearchResponse, backendHint, getApiBase } from '../lib/api';
 import { Cursor, PixelMark, PixelMeter, PixelProgress, Pixels, RevealWords, ScrollInk } from '../components/Motion';
 
 /*
- * Design rules: .claude/skills/kavosh-ui/SKILL.md
+ * Design rules: docs/DESIGN.md
  * Tokens (bg-page, text-ink, border-line, ...) and keyframes live in styles/globals.css.
  */
 
@@ -76,7 +76,7 @@ export default function Home() {
     setView('synthesis');
 
     try {
-      // Simulated pipeline progress for UI feel — real work happens in the fetch below.
+      // Progress display only; the actual work happens in the fetch below.
       for (let i = 0; i < 5; i++) {
         setStep(i);
         await new Promise((r) => setTimeout(r, 400));

@@ -37,7 +37,7 @@ def search_papers(topic: str, max_results: int = 30) -> List[Paper]:
     if not safe:
         return []
 
-    # 2a. DUAL SEARCH: search both all: and ti:
+    # Search both all: and ti: fields
     all_query = f"all:{safe}"
     ti_query = f'ti:"{safe}"'
 
@@ -66,8 +66,7 @@ def search_papers(topic: str, max_results: int = 30) -> List[Paper]:
             )
         return results
 
-    # Fetch from both sources
-    all_results = fetch_papers(all_query, max_results)
+        all_results = fetch_papers(all_query, max_results)
     ti_results = fetch_papers(ti_query, 10) # smaller limit for title matches
 
     # Merge and deduplicate by arxiv_id
@@ -77,19 +76,19 @@ def search_papers(topic: str, max_results: int = 30) -> List[Paper]:
 
     papers = list(merged.values())
 
-    # 2b. TITLE-MATCH PRIORITIZATION
+    # Rank title matches first
     norm_topic = _normalize(topic)
     topic_words = [w for w in norm_topic.split() if len(w) > 3]
 
     def get_tier(p: Paper) -> int:
         norm_title = _normalize(p.title)
-        # Tier 1: Exact match
+        # Exact title match
         if norm_title == norm_topic:
             return 0
-        # Tier 2: Contains all significant words
+        # Title contains all significant words
         if all(word in norm_title for word in topic_words) and topic_words:
             return 1
-        # Tier 3: Others
+        # Everything else
         return 2
 
     papers.sort(key=lambda p: get_tier(p))

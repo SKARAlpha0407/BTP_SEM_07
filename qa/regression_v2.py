@@ -64,7 +64,7 @@ def invariant_ok(resp):
     try:
         g = resp.json().get("graph", {})
         nodes = g.get("nodes")
-        # Note: the prompt mentions edges but the current backend returns 'links'
+        # The backend returns 'links', not 'edges'
         links = g.get("links") 
         if not isinstance(nodes, list) or not nodes or not isinstance(links, list):
             return False, "bad graph shape"

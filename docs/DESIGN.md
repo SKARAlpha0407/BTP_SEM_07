@@ -1,16 +1,8 @@
----
-name: kavosh-ui
-description: Design system and rules for the Kavosh frontend (formerly Research Copilot) (frontend/). Load before changing any page, component, colour, font, animation or the reading-map graph, and before any "make it look better" request.
----
-
 # Kavosh UI
-
-Precedence: the owner's words in the current request, then this file, then your
-own taste.
 
 ## History (why it looks like this)
 
-1. An indigo/violet dark redesign was rejected as "AI slopfest".
+1. An indigo/violet dark redesign was rejected as generic.
 2. A quiet, hairline, serif reading-tool version was rejected as "boring, like a
    Soviet-era brutalist building".
 3. The owner asked for the feel of the groq.com landing page, with more

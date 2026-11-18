@@ -36,8 +36,6 @@ frontend_backup_*.tgz
 **/.DS_Store
 Thumbs.db
 
-.claude/*
-!.claude/skills/
 .cursor/
 .vscode/
 .idea/

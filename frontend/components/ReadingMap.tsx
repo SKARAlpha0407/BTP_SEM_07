@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { ArrowUpRight, X } from 'lucide-react';
 
 /*
- * Reading map. Design rules: .claude/skills/kavosh-ui/SKILL.md
+ * Reading map. Design rules: docs/DESIGN.md
  * - Year is ordered, so it is one hue (the accent) on a pale->deep ramp, never a rainbow.
  * - Size = number of connections. Labels only where they help: the ranked
  *   results and whatever is connected to the selection.

@@ -179,7 +179,7 @@ def search(req: SearchRequest):
     cache_path = "cold"
 
     try:
-        # --- 1. Cache-first lookup ---
+        # Cache-first lookup
         from .db.connection import SessionLocal
         from .db.repository import (
             get_embeddings_for_ids,
@@ -226,7 +226,7 @@ def search(req: SearchRequest):
             top_papers = ranked_papers[: req.max_results]
             _calibrate_scores(top_papers, topic)
         else:
-            # --- 1b. Fallback: fetch from arxiv (cache cold or weak) ---
+            # Fall back to arXiv when the cache is cold or weak
             with telemetry.timer("stage_arxiv"):
                 raw_papers = search_papers(topic, max_results=config.ARXIV_CANDIDATES)
             if not raw_papers:
@@ -235,7 +235,7 @@ def search(req: SearchRequest):
                     detail=f"No papers matched topic {topic!r}",
                 )
 
-            # --- 2. Semantic ranking ---
+            # Semantic ranking
             cached_vecs: dict = {}
             try:
                 with SessionLocal() as _s:
@@ -265,7 +265,7 @@ def search(req: SearchRequest):
                 import logging
                 logging.getLogger(__name__).exception("paper cache write failed")
 
-        # --- 3. Insights: cached first, then Groq for the misses ---
+        # Insights: cached first, then the LLM for the misses
         from .db.connection import SessionLocal
         from .db.repository import get_cached_insights
 
@@ -312,19 +312,19 @@ def search(req: SearchRequest):
                 import logging
                 logging.getLogger(__name__).exception("insight cache write failed")
 
-        # --- 3b. Grounding: flag insight terms that are not in the abstract ---
+        # Flag insight terms that are not in the abstract
         for p in top_papers:
             if isinstance(p.summary, dict):
                 p.summary = dict(p.summary)
                 p.summary["grounding"] = grounding_report(p.summary, p.title, p.abstract)
 
-        # --- 4. Cross-paper synthesis ---
+        # Cross-paper synthesis
         with telemetry.timer("stage_llm_synthesis"):
             synthesis = synthesize_results(
                 [{"title": p.title, "summary": p.summary} for p in top_papers]
             )
 
-        # --- 5. Graph nodes ---
+        # Graph nodes
         graph_papers = ranked_papers[:min(config.GRAPH_MAX_NODES, len(ranked_papers))]
         nodes: List[Dict[str, Any]] = []
         for i, p in enumerate(graph_papers):
@@ -353,7 +353,7 @@ def search(req: SearchRequest):
                 "cluster": None
             })
 
-        # --- 6. Graph links via combined similarity ---
+        # Graph links from combined similarity
         abstracts = [p.abstract for p in graph_papers]
         embs = embed_batch(abstracts)
         links: List[Dict[str, Any]] = []
@@ -389,7 +389,7 @@ def search(req: SearchRequest):
         for n in nodes:
             n["val"] = 0.55 * (n["degree"] / max_deg) + 0.45 * n["val"]
 
-        # --- 7. Connected-components clustering ---
+        # Connected-components clustering
         visited: set[int] = set()
         clusters: Dict[int, List[int]] = {}
         cluster_id = 0
@@ -413,20 +413,20 @@ def search(req: SearchRequest):
             clusters[cluster_id] = component
             cluster_id += 1
 
-        # --- 8. Ask the LLM for theme names ---
+        # Theme names from the LLM
         label_input = {
             cid: [graph_papers[idx].title for idx in indices]  # FIXED: uses graph_papers
             for cid, indices in clusters.items()
         }
         labels = get_cluster_labels(label_input, topic=topic)
 
-        # --- 9. Reverse map ---
+        # Reverse map
         index_to_cluster: Dict[int, int] = {}
         for cid, indices in clusters.items():
             for idx in indices:
                 index_to_cluster[idx] = cid
 
-        # --- 10. Final invariant ---
+        # Every paper must belong to a cluster
         for i, node in enumerate(nodes):
             cid = index_to_cluster.get(i, i)
             label = labels.get(str(cid), labels.get(cid))
@@ -434,10 +434,7 @@ def search(req: SearchRequest):
                 label = f"Cluster {cid}"
             node["cluster"] = label
 
-        # --- 11. Response ---
-        # Explicit field mapping instead of PaperResponse(**p.__dict__) — this
-        # is robust against future Paper field additions and against dataclass
-        # repr helpers showing up in __dict__.
+        # Build the response with explicit field mapping
         papers_out = [
             PaperResponse(
                 title=p.title,
@@ -475,7 +472,7 @@ def search(req: SearchRequest):
         raise
     except Exception as e:
         telemetry.incr("search_error")
-        # Surface the real traceback in Terminal 1 instead of a bare "500".
+        # Log the full traceback instead of returning a bare 500.
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"pipeline error: {e}")
