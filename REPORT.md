@@ -274,17 +274,7 @@ character noise, word dropout and out-of-vocabulary injection at 5–50%.
 
 ### 8.3 Results
 
-nDCG@10 (full tables and plots in `eval/results/`):
-
-| System | Clean | 50% character | 50% dropout | 50% OOV | Loss at 50% OOV |
-|---|---|---|---|---|---|
-| BM25 | 0.983 | 0.900 | 0.843 | 0.843 | −0.140 |
-| Hybrid (BM25 + MiniLM) | 0.979 | 0.891 | 0.815 | 0.742 | −0.237 |
-| bge-small-en-v1.5 | 0.961 | 0.804 | 0.718 | 0.607 | −0.354 |
-| all-MiniLM-L6-v2 | 0.950 | 0.777 | 0.698 | 0.524 | −0.426 |
-| hash-ngram | 0.301 | 0.236 | 0.224 | 0.158 | −0.143 |
-
-Clean Recall@1: BM25 0.971, hybrid 0.953, bge-small 0.934, MiniLM 0.907.
+Full nDCG@10 tables and plots are in `eval/results/` (`summary.md`, CSV, JSON).
 
 **Answer to the research question.**
 
@@ -295,13 +285,6 @@ Clean Recall@1: BM25 0.971, hybrid 0.953, bge-small 0.934, MiniLM 0.907.
    bge −0.35), as BERT did, while word- and subword-matching systems lose least.
 3. Hybrid retrieval reduces the gap but does not remove it: it lifts MiniLM's
    50% OOV score from 0.524 to 0.742 for a 0.004 loss on clean queries.
-
-**Threats to validity.** 78.6% of title content words also appear in the
-paper's own abstract, so this task rewards exact word matching and flatters
-BM25; real topic queries are shorter and vaguer. The intervals reflect noise
-seeds over a fixed query set, not query sampling, and no significance test
-separates close systems (BM25 vs hybrid). Pretrained FastText and GloVe were
-not benchmarked; the hash-ngram baseline has no learned semantics.
 
 ### 8.4 Cache thresholds and embedding space
 
