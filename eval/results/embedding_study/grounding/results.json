@@ -1,0 +1,44 @@
+{
+  "n_papers": 300,
+  "seed": 7,
+  "faithful": {
+    "mean_score": 1.0,
+    "min_score": 1.0,
+    "share_with_any_flag": 0.0,
+    "share_weak_below_50pct": 0.0
+  },
+  "injected": {
+    "1": {
+      "recall": 0.9966666666666667,
+      "mean_score": 0.9801933333333334,
+      "share_weak_below_50pct": 0.0,
+      "roc_auc": 0.9983333333333334
+    },
+    "2": {
+      "recall": 0.9983333333333333,
+      "mean_score": 0.9612666666666666,
+      "share_weak_below_50pct": 0.0,
+      "roc_auc": 1.0
+    },
+    "3": {
+      "recall": 0.9966666666666667,
+      "mean_score": 0.943,
+      "share_weak_below_50pct": 0.0,
+      "roc_auc": 1.0
+    },
+    "5": {
+      "recall": 0.9973333333333333,
+      "mean_score": 0.9087166666666667,
+      "share_weak_below_50pct": 0.0,
+      "roc_auc": 1.0
+    }
+  },
+  "stored_llm_summaries": {
+    "n": 159,
+    "mean_score": 0.6991069182389936,
+    "median_score": 0.714,
+    "p10_score": 0.5388000000000001,
+    "share_weak_below_50pct": 0.06918238993710692,
+    "share_with_any_flag": 1.0
+  }
+}

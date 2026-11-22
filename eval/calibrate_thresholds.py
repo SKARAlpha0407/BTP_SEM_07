@@ -70,18 +70,23 @@ def same_topic(corpus) -> np.ndarray:
     return m
 
 
-def replay_cache(s: np.ndarray, topic: np.ndarray, top: float, strong: float, top_k: int, min_hits: int):
-    """Apply main.py's cache rule to every query's top_k scores."""
-    order = np.argsort(-s, axis=1)[:, :top_k]
+def replay_cache(s: np.ndarray, topic: np.ndarray, top: float, strong: float, top_k: int, min_hits: int,
+                 rows=None):
+    """Apply main.py's cache rule to the queries in `rows` (default: all).
+
+    `s` should have the diagonal masked (-inf) so a query's own paper is not
+    counted: it is on-topic by definition and would inflate the precision."""
+    rows = np.arange(len(s)) if rows is None else np.asarray(rows)
+    order = np.argsort(-s[rows], axis=1)[:, :top_k]
     served, on_topic, total = 0, 0, 0
-    for i, row in enumerate(order):
+    for i, row in zip(rows, order):
         sc = s[i, row]
         hits = row[sc >= strong]
         if sc[0] >= top and len(hits) >= min_hits:
             served += 1
             on_topic += int(topic[i, hits].sum())
             total += len(hits)
-    return served / len(s), (on_topic / total if total else float("nan"))
+    return served / len(rows), (on_topic / total if total else float("nan"))
 
 
 def main() -> None:
@@ -94,6 +99,10 @@ def main() -> None:
     ap.add_argument("--min-hits", type=int, default=5, help="default max_results of /search")
     ap.add_argument("--target-precision", type=float, default=0.70,
                     help="share of served cache hits that must be on-topic")
+    ap.add_argument("--split-seed", type=int, default=0,
+                    help="queries are split in half: thresholds chosen on one half, reported on the other")
+    ap.add_argument("--defaults", nargs=2, type=float, default=[0.40, 0.35],
+                    help="shipped CACHE_TOP_SCORE CACHE_STRONG_SCORE, reported for comparison")
     args = ap.parse_args()
 
     corpus = load_corpus(args.corpus, args.limit)
@@ -116,15 +125,23 @@ def main() -> None:
     sneg = s.copy(); sneg[idx, idx] = -np.inf
     sall_neg = sneg[np.isfinite(sneg)]
 
-    top = round(float(np.percentile(hard_off, 95)), 2)
+    # Own paper excluded from the replay; thresholds chosen on half A, reported on half B.
+    s_self_out = s.copy()
+    s_self_out[idx, idx] = -np.inf
+    perm = np.random.default_rng(args.split_seed).permutation(len(short_q))
+    half_a, half_b = perm[: len(perm) // 2], perm[len(perm) // 2:]
+    top = round(float(np.percentile(hard_off[half_a], 95)), 2)
     tradeoff = []
-    for t in np.round(np.arange(0.20, top + 0.001, 0.01), 2):
-        serve, precision = replay_cache(s, topic, top, float(t), args.top_k, args.min_hits)
+    for t in np.round(np.arange(0.20, max(top, 0.20) + 0.001, 0.01), 2):
+        serve, precision = replay_cache(s_self_out, topic, top, float(t), args.top_k, args.min_hits, half_a)
         tradeoff.append({"strong": float(t), "served_fraction": round(serve, 4),
                          "served_hits_on_topic": round(precision, 4)})
     ok = [r for r in tradeoff if r["served_fraction"] > 0 and r["served_hits_on_topic"] >= args.target_precision]
     chosen = ok[0] if ok else tradeoff[-1]
-    strong, serve, precision = chosen["strong"], chosen["served_fraction"], chosen["served_hits_on_topic"]
+    strong = chosen["strong"]
+    serve, precision = replay_cache(s_self_out, topic, top, strong, args.top_k, args.min_hits, half_b)
+    d_serve, d_precision = replay_cache(s_self_out, topic, args.defaults[0], args.defaults[1],
+                                        args.top_k, args.min_hits, half_b)
 
     out = {
         "model": args.model,
@@ -137,9 +154,15 @@ def main() -> None:
             "on_topic_base_rate": round(float(topic[~np.eye(len(corpus), dtype=bool)].mean()), 4),
             "cache_replay": {"top_k": args.top_k, "min_hits": args.min_hits,
                              "target_precision": args.target_precision,
-                             "met": bool(ok),
-                             "served_fraction": serve,
-                             "served_hits_on_topic": precision},
+                             "own_paper_excluded": True,
+                             "chosen_on": "half A", "reported_on": "half B (held out)",
+                             "met_on_half_a": bool(ok),
+                             "served_fraction": round(serve, 4),
+                             "served_hits_on_topic": round(precision, 4),
+                             "shipped_defaults": {"CACHE_TOP_SCORE": args.defaults[0],
+                                                  "CACHE_STRONG_SCORE": args.defaults[1],
+                                                  "served_fraction": round(d_serve, 4),
+                                                  "served_hits_on_topic": round(d_precision, 4)}},
             "tradeoff": tradeoff,
         },
         "long_query": {

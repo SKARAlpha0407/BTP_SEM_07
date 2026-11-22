@@ -1,0 +1,91 @@
+{
+  "subsets": 100,
+  "size": 30,
+  "seed": 0,
+  "results": {
+    "all-MiniLM-L6-v2": {
+      "links": 22.68,
+      "components": {
+        "clusters": 15.28,
+        "multi": 4.42,
+        "largest": 0.2753333333333334,
+        "isolated": 10.86,
+        "nmi": 0.7047441579967528,
+        "ari": 0.3611343752737796
+      },
+      "modularity": {
+        "clusters": 15.95,
+        "multi": 5.09,
+        "largest": 0.201,
+        "isolated": 10.86,
+        "nmi": 0.7261560844107424,
+        "ari": 0.38430881364884156
+      },
+      "nmi_gain_mean": 0.021411926413989642,
+      "nmi_gain_wilcoxon_p": 1.909495807455963e-08
+    },
+    "BAAI/bge-small-en-v1.5": {
+      "links": 90.0,
+      "components": {
+        "clusters": 1.89,
+        "multi": 1.35,
+        "largest": 0.9293333333333332,
+        "isolated": 0.54,
+        "nmi": 0.13285955189249946,
+        "ari": 0.03686822495222885
+      },
+      "modularity": {
+        "clusters": 4.56,
+        "multi": 4.02,
+        "largest": 0.3579999999999999,
+        "isolated": 0.54,
+        "nmi": 0.6504728247068698,
+        "ari": 0.43298451299342366
+      },
+      "nmi_gain_mean": 0.5176132728143701,
+      "nmi_gain_wilcoxon_p": 3.89655984509591e-18
+    },
+    "intfloat/e5-small-v2": {
+      "links": 90.0,
+      "components": {
+        "clusters": 2.06,
+        "multi": 1.44,
+        "largest": 0.9180000000000001,
+        "isolated": 0.62,
+        "nmi": 0.15943976301218044,
+        "ari": 0.04445806441009121
+      },
+      "modularity": {
+        "clusters": 4.61,
+        "multi": 3.99,
+        "largest": 0.36033333333333323,
+        "isolated": 0.62,
+        "nmi": 0.640740759326658,
+        "ari": 0.42365399875143583
+      },
+      "nmi_gain_mean": 0.4813009963144774,
+      "nmi_gain_wilcoxon_p": 4.0161556854627e-18
+    },
+    "thenlper/gte-small": {
+      "links": 90.0,
+      "components": {
+        "clusters": 1.96,
+        "multi": 1.42,
+        "largest": 0.9203333333333334,
+        "isolated": 0.54,
+        "nmi": 0.14701934985875945,
+        "ari": 0.04816370150418102
+      },
+      "modularity": {
+        "clusters": 4.51,
+        "multi": 3.97,
+        "largest": 0.3619999999999999,
+        "isolated": 0.54,
+        "nmi": 0.6377450053502577,
+        "ari": 0.42084618325341844
+      },
+      "nmi_gain_mean": 0.4907256554914982,
+      "nmi_gain_wilcoxon_p": 6.243608161416482e-18
+    }
+  }
+}

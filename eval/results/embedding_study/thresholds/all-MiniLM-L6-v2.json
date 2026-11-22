@@ -1,0 +1,182 @@
+{
+  "model": "all-MiniLM-L6-v2",
+  "n": 816,
+  "short_query": {
+    "example": "ArchSpace Recording",
+    "positive_cosine": {
+      "p25": 0.20773637294769287,
+      "median": 0.30122625827789307
+    },
+    "hardest_off_topic_cosine": {
+      "median": 0.31895291805267334,
+      "p95": 0.4611974358558655
+    },
+    "on_topic_base_rate": 0.3494,
+    "cache_replay": {
+      "top_k": 30,
+      "min_hits": 5,
+      "target_precision": 0.7,
+      "own_paper_excluded": true,
+      "chosen_on": "half A",
+      "reported_on": "half B (held out)",
+      "met_on_half_a": true,
+      "served_fraction": 0.0711,
+      "served_hits_on_topic": 0.6927,
+      "shipped_defaults": {
+        "CACHE_TOP_SCORE": 0.4,
+        "CACHE_STRONG_SCORE": 0.35,
+        "served_fraction": 0.2377,
+        "served_hits_on_topic": 0.6047
+      }
+    },
+    "tradeoff": [
+      {
+        "strong": 0.2,
+        "served_fraction": 0.1225,
+        "served_hits_on_topic": 0.5847
+      },
+      {
+        "strong": 0.21,
+        "served_fraction": 0.1225,
+        "served_hits_on_topic": 0.5847
+      },
+      {
+        "strong": 0.22,
+        "served_fraction": 0.1225,
+        "served_hits_on_topic": 0.5847
+      },
+      {
+        "strong": 0.23,
+        "served_fraction": 0.1225,
+        "served_hits_on_topic": 0.5847
+      },
+      {
+        "strong": 0.24,
+        "served_fraction": 0.1225,
+        "served_hits_on_topic": 0.586
+      },
+      {
+        "strong": 0.25,
+        "served_fraction": 0.1225,
+        "served_hits_on_topic": 0.5873
+      },
+      {
+        "strong": 0.26,
+        "served_fraction": 0.1225,
+        "served_hits_on_topic": 0.5902
+      },
+      {
+        "strong": 0.27,
+        "served_fraction": 0.1225,
+        "served_hits_on_topic": 0.5911
+      },
+      {
+        "strong": 0.28,
+        "served_fraction": 0.1225,
+        "served_hits_on_topic": 0.5921
+      },
+      {
+        "strong": 0.29,
+        "served_fraction": 0.1225,
+        "served_hits_on_topic": 0.591
+      },
+      {
+        "strong": 0.3,
+        "served_fraction": 0.1225,
+        "served_hits_on_topic": 0.5926
+      },
+      {
+        "strong": 0.31,
+        "served_fraction": 0.1225,
+        "served_hits_on_topic": 0.5939
+      },
+      {
+        "strong": 0.32,
+        "served_fraction": 0.1201,
+        "served_hits_on_topic": 0.6036
+      },
+      {
+        "strong": 0.33,
+        "served_fraction": 0.1201,
+        "served_hits_on_topic": 0.6074
+      },
+      {
+        "strong": 0.34,
+        "served_fraction": 0.1176,
+        "served_hits_on_topic": 0.6188
+      },
+      {
+        "strong": 0.35,
+        "served_fraction": 0.1152,
+        "served_hits_on_topic": 0.6281
+      },
+      {
+        "strong": 0.36,
+        "served_fraction": 0.1103,
+        "served_hits_on_topic": 0.641
+      },
+      {
+        "strong": 0.37,
+        "served_fraction": 0.1029,
+        "served_hits_on_topic": 0.653
+      },
+      {
+        "strong": 0.38,
+        "served_fraction": 0.0931,
+        "served_hits_on_topic": 0.6676
+      },
+      {
+        "strong": 0.39,
+        "served_fraction": 0.0858,
+        "served_hits_on_topic": 0.6995
+      },
+      {
+        "strong": 0.4,
+        "served_fraction": 0.0784,
+        "served_hits_on_topic": 0.6992
+      },
+      {
+        "strong": 0.41,
+        "served_fraction": 0.0711,
+        "served_hits_on_topic": 0.7089
+      },
+      {
+        "strong": 0.42,
+        "served_fraction": 0.0588,
+        "served_hits_on_topic": 0.7464
+      },
+      {
+        "strong": 0.43,
+        "served_fraction": 0.0539,
+        "served_hits_on_topic": 0.7689
+      },
+      {
+        "strong": 0.44,
+        "served_fraction": 0.0417,
+        "served_hits_on_topic": 0.8533
+      },
+      {
+        "strong": 0.45,
+        "served_fraction": 0.0245,
+        "served_hits_on_topic": 0.9136
+      },
+      {
+        "strong": 0.46,
+        "served_fraction": 0.0123,
+        "served_hits_on_topic": 0.8718
+      }
+    ]
+  },
+  "long_query": {
+    "positive_cosine": {
+      "p25": 0.5671840906143188,
+      "median": 0.6485000252723694
+    }
+  },
+  "suggested": {
+    "CACHE_STRONG_SCORE": 0.41,
+    "CACHE_TOP_SCORE": 0.46,
+    "CALIB_BETA_LONG": 0.4,
+    "CALIB_BETA_SHORT": 0.19
+  }
+}

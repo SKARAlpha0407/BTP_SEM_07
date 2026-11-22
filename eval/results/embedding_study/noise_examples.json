@@ -1,0 +1,52 @@
+[
+  {
+    "noise": "clean",
+    "rho": 0.0,
+    "query": "ArchSpace: Recording, Reviewing, and Referencing LLM Architecture Research"
+  },
+  {
+    "noise": "char",
+    "rho": 0.1,
+    "query": "ArchSpace: Recording, Reviewing, and Referencing LL Architecture Research"
+  },
+  {
+    "noise": "char",
+    "rho": 0.3,
+    "query": "ArchSpace: Recording, Reviewing, and Referencing LLM Architecure Reearch"
+  },
+  {
+    "noise": "char",
+    "rho": 0.5,
+    "query": "ArchSpace: Recording, Reviewing, ad Rueferencing LLM Architectre Researhc"
+  },
+  {
+    "noise": "dropout",
+    "rho": 0.1,
+    "query": "ArchSpace: Recording, Reviewing, Referencing LLM Architecture"
+  },
+  {
+    "noise": "dropout",
+    "rho": 0.3,
+    "query": "ArchSpace: Recording, Reviewing, Referencing LLM Architecture Research"
+  },
+  {
+    "noise": "dropout",
+    "rho": 0.5,
+    "query": "ArchSpace: Referencing"
+  },
+  {
+    "noise": "oov",
+    "rho": 0.1,
+    "query": "ArchSpace: Recording, Reviewing, and Referencing LLM Architecture Research"
+  },
+  {
+    "noise": "oov",
+    "rho": 0.3,
+    "query": "ArchSpace: Recording, zxq853 zxq304 Referencing LLM zxq934 Research"
+  },
+  {
+    "noise": "oov",
+    "rho": 0.5,
+    "query": "ArchSpace: Recording, Reviewing, and zxq528 LLM zxq062 Research"
+  }
+]
