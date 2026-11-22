@@ -2,8 +2,8 @@ from datetime import date, datetime
 from typing import List
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Date, DateTime, ForeignKey, Text, func
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -49,6 +49,20 @@ class PaperInsight(Base):
     problem: Mapped[str | None] = mapped_column(Text, nullable=True)
     methods: Mapped[str | None] = mapped_column(Text, nullable=True)
     benchmarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class SearchAnswer(Base):
+    """A complete /search response for one exact topic (see migration 0002)."""
+
+    __tablename__ = "search_answers"
+
+    topic_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    max_results: Mapped[int] = mapped_column(Integer, primary_key=True)
+    config_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    response: Mapped[dict] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

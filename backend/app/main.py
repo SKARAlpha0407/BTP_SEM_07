@@ -19,6 +19,7 @@ from .embedding_service import (
 from .grounding import grounding_report
 from .hybrid import BM25, rrf_fuse, matched_terms
 from .llm_service import (
+    SYNTHESIS_UNAVAILABLE,
     is_placeholder_insight,
     extract_insights_batch,
     synthesize_results,
@@ -216,6 +217,48 @@ def _stale_cached_papers(query_vec, limit: int) -> list:
         return []
 
 
+def _topic_key(topic: str) -> str:
+    return " ".join(topic.casefold().split())
+
+
+def _config_key() -> str:
+    return f"{EMBED_MODEL}|{MODEL}|hybrid={int(config.HYBRID_RETRIEVAL)}"
+
+
+def _load_saved_answer(topic: str, max_results: int):
+    if config.ANSWER_CACHE_HOURS <= 0:
+        return None
+    try:
+        from .db.connection import SessionLocal
+        from .db.repository import get_saved_answer
+        with SessionLocal() as s:
+            return get_saved_answer(s, _topic_key(topic), max_results, _config_key(), config.ANSWER_CACHE_HOURS)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("saved-answer lookup failed")
+        return None
+
+
+def _save_answer(topic: str, max_results: int, response: dict) -> None:
+    try:
+        from fastapi.encoders import jsonable_encoder
+        from .db.connection import SessionLocal
+        from .db.repository import save_answer
+        with SessionLocal() as s:
+            save_answer(s, _topic_key(topic), max_results, _config_key(), jsonable_encoder(response))
+            s.commit()
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("saved-answer write failed")
+
+
+def _answer_is_complete(papers, synthesis: str) -> bool:
+    """Only answers without failed parts are saved, so a failure is never frozen."""
+    return bool(papers) and synthesis != SYNTHESIS_UNAVAILABLE and all(
+        not is_placeholder_insight(p.summary) for p in papers
+    )
+
+
 class ErrorDetail(BaseModel):
     detail: str
 
@@ -247,6 +290,20 @@ def search(req: SearchRequest, request: Request):
     t_start = time.perf_counter()
     telemetry.incr("search_total")
     cache_path = "cold"
+
+    # The same topic searched recently: return the stored answer as it was,
+    # with no arXiv or LLM calls.
+    saved = _load_saved_answer(topic, req.max_results)
+    if saved is not None:
+        elapsed = time.perf_counter() - t_start
+        telemetry.incr("answer_cache_hit")
+        telemetry.observe("search_saved", elapsed)
+        telemetry.observe("search_all", elapsed)
+        saved.setdefault("meta", {})
+        saved["meta"]["original_cache_path"] = saved["meta"].get("cache_path")
+        saved["meta"]["cache_path"] = "saved"
+        saved["meta"]["latency_seconds"] = round(elapsed, 3)
+        return saved
 
     try:
         # Cache-first lookup
@@ -547,7 +604,7 @@ def search(req: SearchRequest, request: Request):
         elapsed = time.perf_counter() - t_start
         telemetry.observe(f"search_{cache_path}", elapsed)
         telemetry.observe("search_all", elapsed)
-        return {
+        response = {
             "papers": papers_out,
             "synthesis": synthesis,
             "graph": {"nodes": nodes, "links": links},
@@ -558,6 +615,9 @@ def search(req: SearchRequest, request: Request):
                 "hybrid_retrieval": config.HYBRID_RETRIEVAL and cache_path == "cold",
             },
         }
+        if cache_path in ("cold", "warm") and _answer_is_complete(top_papers, synthesis):
+            _save_answer(topic, req.max_results, response)
+        return response
 
     except HTTPException:
         telemetry.incr("search_http_error")

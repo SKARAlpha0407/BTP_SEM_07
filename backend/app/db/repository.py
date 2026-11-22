@@ -207,3 +207,34 @@ def get_embeddings_for_ids(
             return [float(x) for x in json.loads(v)]
         return [float(x) for x in v]
     return {row[0]: _to_list(row[1]) for row in result}
+
+
+def get_saved_answer(
+    session: Session, topic_key: str, max_results: int, config_key: str, max_age_hours: float
+) -> dict | None:
+    """A stored /search response for this exact topic, if younger than max_age_hours."""
+    row = session.execute(
+        text(
+            """
+            SELECT response FROM search_answers
+            WHERE topic_key = :t AND max_results = :k AND config_key = :c
+              AND created_at > NOW() - (INTERVAL '1 hour' * :age)
+            """
+        ),
+        {"t": topic_key, "k": max_results, "c": config_key, "age": max_age_hours},
+    ).first()
+    return row[0] if row else None
+
+
+def save_answer(session: Session, topic_key: str, max_results: int, config_key: str, response: dict) -> None:
+    session.execute(
+        text(
+            """
+            INSERT INTO search_answers (topic_key, max_results, config_key, response, created_at)
+            VALUES (:t, :k, :c, CAST(:r AS jsonb), NOW())
+            ON CONFLICT (topic_key, max_results, config_key)
+            DO UPDATE SET response = EXCLUDED.response, created_at = NOW()
+            """
+        ),
+        {"t": topic_key, "k": max_results, "c": config_key, "r": json.dumps(response)},
+    )

@@ -41,8 +41,9 @@ export interface SearchResponse {
 }
 
 // warm: served from the semantic cache; cold: fetched from arXiv now;
-// stale: arXiv was unavailable, so papers stored earlier are shown.
-export type CachePath = 'warm' | 'cold' | 'stale';
+// stale: arXiv was unavailable, so papers stored earlier are shown;
+// saved: the same topic was searched recently and its whole answer is reused.
+export type CachePath = 'warm' | 'cold' | 'stale' | 'saved';
 
 export interface SearchMeta {
   cache_path: CachePath;

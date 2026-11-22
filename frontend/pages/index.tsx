@@ -53,6 +53,7 @@ const CACHE_PATH_TEXT: Record<string, { label: string; title: string }> = {
   cold: { label: 'Live', title: 'Fetched from arXiv for this search' },
   warm: { label: 'Cached', title: 'Served from papers stored by an earlier search' },
   stale: { label: 'Stored copy', title: 'arXiv was unavailable, so papers stored earlier are shown' },
+  saved: { label: 'Saved answer', title: 'This topic was searched recently; the same answer is shown without new arXiv or LLM calls' },
 };
 
 export default function Home() {
