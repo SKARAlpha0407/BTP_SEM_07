@@ -68,7 +68,7 @@ def save(fig, name):
 
 
 def short_queries():
-    d = load("short_queries/results.json")
+    d = load("short_queries_fullpool/results.json")  # neutral pool: all 816 papers
     rows = {(r["model"], r["style"], r["variant"]): r for r in d["rows"]}
     fig, axes = plt.subplots(2, 1, figsize=(7.2, 5.0), sharex=True)
     for ax, style, title in zip(axes, ("first2", "idf3"), ("Two-word topics (first two content words)",

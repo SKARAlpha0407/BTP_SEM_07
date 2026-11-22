@@ -1,0 +1,81 @@
+{
+  "rows": [
+    {
+      "topic": "speculative decoding",
+      "status": 200,
+      "wall_seconds": 39.15,
+      "cache_path": "cold",
+      "server_seconds": 39.092
+    },
+    {
+      "topic": "audio source separation",
+      "status": 200,
+      "wall_seconds": 11.86,
+      "cache_path": "cold",
+      "server_seconds": 11.827
+    },
+    {
+      "topic": "visual question answering",
+      "status": 200,
+      "wall_seconds": 9.98,
+      "cache_path": "cold",
+      "server_seconds": 9.948
+    },
+    {
+      "topic": "graph transformers for molecules",
+      "status": 200,
+      "wall_seconds": 26.19,
+      "cache_path": "cold",
+      "server_seconds": 26.154
+    },
+    {
+      "topic": "federated learning with differential privacy",
+      "status": 200,
+      "wall_seconds": 10.49,
+      "cache_path": "cold",
+      "server_seconds": 10.455
+    }
+  ],
+  "median_wall_seconds": 11.86,
+  "metrics_since_server_start": {
+    "uptime_seconds": 492.2,
+    "stages": {
+      "stage_arxiv": {
+        "count": 5,
+        "p50": 5.1651,
+        "p95": 15.589,
+        "mean": 6.8784
+      },
+      "stage_rank": {
+        "count": 5,
+        "p50": 0.7354,
+        "p95": 0.781,
+        "mean": 0.7081
+      },
+      "stage_llm_insights": {
+        "count": 5,
+        "p50": 2.6937,
+        "p95": 4.3394,
+        "mean": 3.0949
+      },
+      "stage_llm_synthesis": {
+        "count": 5,
+        "p50": 0.9783,
+        "p95": 1.9459,
+        "mean": 1.116
+      },
+      "search_cold": {
+        "count": 5,
+        "p50": 11.8272,
+        "p95": 39.0925,
+        "mean": 19.4954
+      },
+      "search_all": {
+        "count": 5,
+        "p50": 11.8272,
+        "p95": 39.0925,
+        "mean": 19.4954
+      }
+    }
+  }
+}

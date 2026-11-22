@@ -1,0 +1,59 @@
+{
+  "machine": {
+    "platform": "macOS-27.2.1-arm64-arm-64bit",
+    "processor": "arm",
+    "machine": "arm64",
+    "cpu_count": 8,
+    "ram_gb": 8.0,
+    "python": "3.12.13",
+    "load_average_1_5_15min_at_end": [
+      4.99,
+      5.87,
+      6.83
+    ],
+    "load_average_1_5_15min_at_start": [
+      4.52,
+      6.5,
+      7.3
+    ],
+    "cpu_brand": "Apple M2"
+  },
+  "rows": [
+    {
+      "model": "all-MiniLM-L6-v2",
+      "load_seconds": 21.0715869590058,
+      "rss_increase_mb": 184.03125,
+      "encode_816_abstracts_seconds": 11.987561833986547,
+      "query_ms_median": 6.551146012498066,
+      "query_ms_p95": 7.375033677089959,
+      "disk_mb": 87.33598232269287
+    },
+    {
+      "model": "BAAI/bge-small-en-v1.5",
+      "load_seconds": 14.852870457980316,
+      "rss_increase_mb": 819.25,
+      "encode_816_abstracts_seconds": 40.66117158299312,
+      "query_ms_median": 14.936312974896282,
+      "query_ms_p95": 23.59907846548594,
+      "disk_mb": 128.27486038208008
+    },
+    {
+      "model": "intfloat/e5-small-v2",
+      "load_seconds": 16.299866207991727,
+      "rss_increase_mb": 531.96875,
+      "encode_816_abstracts_seconds": 42.57538341701729,
+      "query_ms_median": 14.980062493123114,
+      "query_ms_p95": 19.87766044330783,
+      "disk_mb": 128.24887943267822
+    },
+    {
+      "model": "thenlper/gte-small",
+      "load_seconds": 25.197915875003673,
+      "rss_increase_mb": 752.71875,
+      "encode_816_abstracts_seconds": 40.8478695829981,
+      "query_ms_median": 16.283542005112395,
+      "query_ms_p95": 18.796697352081534,
+      "disk_mb": 64.62016582489014
+    }
+  ]
+}
