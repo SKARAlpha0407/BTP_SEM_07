@@ -221,8 +221,21 @@ def _topic_key(topic: str) -> str:
     return " ".join(topic.casefold().split())
 
 
+# Every setting that changes the content or order of an answer. A saved answer is
+# reused only when all of them match.
+_ANSWER_SETTINGS = (
+    "HYBRID_RETRIEVAL", "RRF_K", "DISPLAY_ORDER", "ARXIV_CANDIDATES", "CACHE_TTL_HOURS", "CACHE_TOP_K",
+    "CACHE_TOP_SCORE", "CACHE_STRONG_SCORE", "CALIB_ALPHA", "CALIB_BETA_SHORT", "CALIB_BETA_LONG",
+    "TITLE_BOOST", "GRAPH_MAX_NODES", "GRAPH_CLUSTERING",
+)
+
+
 def _config_key() -> str:
-    return f"{EMBED_MODEL}|{MODEL}|hybrid={int(config.HYBRID_RETRIEVAL)}"
+    import hashlib
+    import json as _json
+
+    settings = _json.dumps({k: getattr(config, k) for k in _ANSWER_SETTINGS}, sort_keys=True)
+    return f"{EMBED_MODEL}|{MODEL}|{hashlib.sha1(settings.encode()).hexdigest()[:12]}"
 
 
 def _load_saved_answer(topic: str, max_results: int):
@@ -243,9 +256,10 @@ def _save_answer(topic: str, max_results: int, response: dict) -> None:
     try:
         from fastapi.encoders import jsonable_encoder
         from .db.connection import SessionLocal
-        from .db.repository import save_answer
+        from .db.repository import prune_answers, save_answer
         with SessionLocal() as s:
             save_answer(s, _topic_key(topic), max_results, _config_key(), jsonable_encoder(response))
+            prune_answers(s, config.ANSWER_CACHE_HOURS, config.ANSWER_CACHE_MAX_ROWS)
             s.commit()
     except Exception:
         import logging

@@ -42,6 +42,7 @@ CACHE_TOP_SCORE = _f("CACHE_TOP_SCORE", 0.40)       # best hit must reach this
 CACHE_STRONG_SCORE = _f("CACHE_STRONG_SCORE", 0.35)  # a hit counts as "strong" above this
 # Complete answers for an exact repeat of a topic are reused for this long (0 = off).
 ANSWER_CACHE_HOURS = _f("ANSWER_CACHE_HOURS", 6.0)
+ANSWER_CACHE_MAX_ROWS = _i("ANSWER_CACHE_MAX_ROWS", 1000)  # newest answers kept; older ones are deleted
 
 # --- Score calibration (sigmoid over raw cosine) ----------------------------
 CALIB_ALPHA = _f("CALIB_ALPHA", 10.0)

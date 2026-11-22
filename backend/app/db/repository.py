@@ -238,3 +238,20 @@ def save_answer(session: Session, topic_key: str, max_results: int, config_key: 
         ),
         {"t": topic_key, "k": max_results, "c": config_key, "r": json.dumps(response)},
     )
+
+
+def prune_answers(session: Session, max_age_hours: float, max_rows: int) -> None:
+    """Delete expired answers, then keep at most max_rows of the newest."""
+    session.execute(
+        text("DELETE FROM search_answers WHERE created_at <= NOW() - (INTERVAL '1 hour' * :age)"),
+        {"age": max_age_hours},
+    )
+    session.execute(
+        text(
+            """
+            DELETE FROM search_answers WHERE ctid IN (
+              SELECT ctid FROM search_answers ORDER BY created_at DESC OFFSET :n)
+            """
+        ),
+        {"n": max_rows},
+    )
