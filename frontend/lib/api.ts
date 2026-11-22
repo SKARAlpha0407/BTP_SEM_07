@@ -22,7 +22,19 @@ export interface SearchResponse {
   papers: Paper[];
   synthesis: string;
   graph: {
-    nodes: Array<{ id: number; title: string; val: number; cluster?: string }>;
+    nodes: Array<{
+      id: number;
+      title: string;
+      val: number;
+      cluster?: string;
+      year?: number;
+      short_label?: string;
+      primary_category?: string;
+      degree?: number;
+      author_surnames?: string[];
+      arxiv_url?: string;
+      pdf_url?: string;
+    }>;
     links: Array<{ source: number; target: number; weight: number }>;
   };
   meta?: SearchMeta;

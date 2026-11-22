@@ -83,14 +83,6 @@ def _rank(
     return [papers[i] for i in order], [list(all_vecs[i]) for i in order]
 
 
-def rank_papers(query: str, papers: List) -> list:
-    return _rank(query, papers)[0]
-
-
-def rank_papers_with_vectors(query: str, papers: List) -> Tuple[list, List[List[float]]]:
-    return _rank(query, papers)
-
-
 def rank_with_cached_vectors(
     query: str, papers: List, cached_vectors: dict
 ) -> Tuple[list, List[List[float]]]:

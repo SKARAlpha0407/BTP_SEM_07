@@ -47,10 +47,18 @@ Thumbs.db
 *.bak
 venv-transcripts/
 verify_groq.py
-test_arxiv_client.py
-test_llm_service.py
+/test_arxiv_client.py
+/test_llm_service.py
 backend/app/verify_groq.py
 
 # Evaluation corpus is re-downloadable; results are kept as report evidence
 eval/data/
 graph_export.gexf
+
+# Build and tooling output
+*.tsbuildinfo
+frontend/next-env.d.ts
+
+# Local database backups and verification runs
+db_backups/
+eval/rerun_*/

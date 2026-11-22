@@ -1,7 +1,6 @@
 """Repository layer for paper data operations."""
 import json
 
-from typing import Any
 
 from sqlalchemy import text, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -76,36 +75,6 @@ def upsert_insight(session: Session, arxiv_id: str, llm_model: str, insight: dic
         },
     )
     session.execute(stmt)
-
-
-def get_missing_embeddings(session: Session, arxiv_ids: list[str], model_name: str) -> list[str]:
-    if not arxiv_ids:
-        return []
-    placeholders = ",".join([f":id{i}" for i in range(len(arxiv_ids))])
-    params: dict[str, Any] = {f"id{i}": arxiv_id for i, arxiv_id in enumerate(arxiv_ids)}
-    params["model_name"] = model_name
-    sql = text(
-        f"""
-        SELECT arxiv_id FROM paper_embeddings
-        WHERE arxiv_id IN ({placeholders}) AND model_name = :model_name
-        """
-    )
-    result = session.execute(sql, params)
-    existing = {row[0] for row in result}
-    return [aid for aid in arxiv_ids if aid not in existing]
-
-
-def search_similar(session: Session, query_vec: list[float], top_k: int = 20) -> list[tuple[str, float]]:
-    sql = text(
-        """
-        SELECT arxiv_id, 1 - (embedding <=> CAST(:vec AS vector)) AS score
-        FROM paper_embeddings
-        ORDER BY embedding <=> CAST(:vec AS vector)
-        LIMIT :k
-        """
-    )
-    result = session.execute(sql, {"vec": query_vec, "k": top_k})
-    return [(row[0], float(row[1])) for row in result]
 
 
 def _allow_filtered_hnsw(session: Session, top_k: int) -> None:

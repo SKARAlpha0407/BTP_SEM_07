@@ -486,7 +486,7 @@ def search(req: SearchRequest, request: Request):
         clusters: Dict[int, List[int]] = {}
         cluster_id = 0
 
-        for i in range(len(graph_papers)):  # FIXED: uses graph_papers
+        for i in range(len(graph_papers)):
             if i in visited:
                 continue
             component: List[int] = []
@@ -507,7 +507,7 @@ def search(req: SearchRequest, request: Request):
 
         # Theme names from the LLM
         label_input = {
-            cid: [graph_papers[idx].title for idx in indices]  # FIXED: uses graph_papers
+            cid: [graph_papers[idx].title for idx in indices]
             for cid, indices in clusters.items()
         }
         labels = get_cluster_labels(label_input, topic=topic)

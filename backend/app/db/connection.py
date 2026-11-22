@@ -12,10 +12,3 @@ SessionLocal = sessionmaker(
     bind=engine, class_=Session, autocommit=False, autoflush=False, expire_on_commit=False
 )
 
-
-def get_db() -> Session:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
