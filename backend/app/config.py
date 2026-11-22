@@ -52,6 +52,8 @@ TITLE_BOOST = _f("TITLE_BOOST", 0.15)
 # --- Retrieval --------------------------------------------------------------
 ARXIV_CANDIDATES = _i("ARXIV_CANDIDATES", 50)
 HYBRID_RETRIEVAL = _b("HYBRID_RETRIEVAL", True)  # BM25 + dense, fused with RRF
+# Order of the top results with hybrid on: "fused" (RRF order) or "score" (rescaled dense score).
+DISPLAY_ORDER = os.environ.get("DISPLAY_ORDER", "fused")
 RRF_K = _i("RRF_K", 60)
 
 # --- arXiv politeness (avoids HTTP 429) --------------------------------------
@@ -73,4 +75,6 @@ EXPOSE_DOCS = _b("EXPOSE_DOCS", False)  # serve /docs, /openapi.json and /metric
 
 # --- Graph ------------------------------------------------------------------
 GRAPH_MAX_NODES = _i("GRAPH_MAX_NODES", 30)
-GRAPH_CLUSTERING = os.environ.get("GRAPH_CLUSTERING", "components")  # or "modularity"
+# "modularity" (greedy modularity communities) or "components" (connected components);
+# modularity matched arXiv categories better on every model tested (eval/clustering_eval.py).
+GRAPH_CLUSTERING = os.environ.get("GRAPH_CLUSTERING", "modularity")

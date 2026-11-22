@@ -596,7 +596,7 @@ function ResultsView({
           <h2 className={`${LABEL} text-ink`}>
             Ranked papers <span className="text-muted">/ {results.papers.length}</span>
           </h2>
-          <span className={`${LABEL} text-muted`}>Relevance</span>
+          <span className={`${LABEL} text-muted`} title="Ranked by meaning and keyword match together; the bar shows the meaning match alone">Meaning match</span>
         </div>
         <ol>
           {results.papers.map((p, i) => (
@@ -745,7 +745,7 @@ function PaperRow({
         <span className="truncate text-[12px] text-muted tabular-nums">
           {firstAuthor(paper)} · {paper.published?.slice(0, 4)} · <span className="font-mono">{paper.categories?.[0]}</span>
         </span>
-        <span className="flex items-center gap-3" title="Relevance to your topic (0 to 1)">
+        <span className="flex items-center gap-3" title="How closely the abstract matches your topic in meaning (0 to 1). The list is ordered by meaning and keyword match together.">
           <PixelMeter value={score} delay={delay} />
           <span className="font-mono text-[12px] text-ink-2 tabular-nums">{score.toFixed(3)}</span>
         </span>
