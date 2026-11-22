@@ -49,7 +49,8 @@ const endId = (end: number | GraphNode) => (typeof end === 'object' ? end.id : e
 
 /** arXiv returns http:// entry URLs; links should be https. */
 const https = (url?: string) => (url ? url.replace(/^http:\/\//, 'https://') : '');
-const arxivId = (url?: string) => (url ? url.split('/').pop() ?? '' : '');
+// Everything after /abs/, so old-style IDs keep their archive (hep-th/9804003v2).
+const arxivId = (url?: string) => (url ? url.split('/abs/').pop() ?? '' : '');
 
 const LINK_PILL =
   'inline-flex items-center gap-1 rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors duration-200';

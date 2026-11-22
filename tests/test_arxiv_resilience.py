@@ -175,3 +175,34 @@ def test_lock_wait_is_bounded(monkeypatch):
 def test_arxiv_http_requests_have_a_timeout():
     req = arxiv_client._client._session.request
     assert req.keywords.get("timeout") == config.ARXIV_HTTP_TIMEOUT
+
+
+def test_split_version():
+    assert arxiv_client.split_version("2605.12335v2") == ("2605.12335", 2)
+    assert arxiv_client.split_version("hep-th/9804003v1") == ("hep-th/9804003", 1)
+    assert arxiv_client.split_version("hep-th/9804003") == ("hep-th/9804003", 0)
+
+
+def test_versions_of_one_paper_are_merged_keeping_the_newest(monkeypatch):
+    def fake_fetch(q, limit):
+        a, b, c = _paper(1, "graph neural networks"), _paper(2, "graph neural networks"), _paper(3, "other")
+        a.arxiv_id, b.arxiv_id, c.arxiv_id = "2605.12335v1", "2605.12335v2", "hep-th/9804003v2"
+        return [a, b, c, c]
+    monkeypatch.setattr(arxiv_client, "_fetch", fake_fetch)
+    ids = sorted(p.arxiv_id for p in arxiv_client.search_papers("graph neural networks", 50))
+    assert ids == ["2605.12335v2", "hep-th/9804003v2"]
+
+
+def test_old_style_ids_keep_their_archive(monkeypatch):
+    class R:
+        entry_id = "http://arxiv.org/abs/hep-th/9804003v2"
+        title = "T"; summary = "S"; authors = []; pdf_url = "p"; categories = ["hep-th"]
+        import datetime as _d
+        published = _d.datetime(1998, 4, 1)
+        def get_short_id(self):
+            return self.entry_id.split("arxiv.org/abs/")[-1]
+    class C:
+        def results(self, search):
+            return [R()]
+    monkeypatch.setattr(arxiv_client, "_client", C())
+    assert arxiv_client._fetch("all:x", 1)[0].arxiv_id == "hep-th/9804003v2"

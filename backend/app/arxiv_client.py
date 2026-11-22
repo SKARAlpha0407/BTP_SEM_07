@@ -125,7 +125,9 @@ def _fetch(query: str, limit: int) -> List[Paper]:
                         title=result.title.replace("\n", " ").strip(),
                         authors=[author.name for author in result.authors],
                         abstract=result.summary.replace("\n", " ").strip(),
-                        arxiv_id=result.entry_id.split("/")[-1],
+                        # get_short_id keeps the archive of old-style IDs
+                        # (hep-th/9804003v2); the last path part alone would not.
+                        arxiv_id=result.get_short_id(),
                         arxiv_url=result.entry_id,
                         pdf_url=result.pdf_url,
                         published=result.published.strftime("%Y-%m-%d"),
@@ -186,9 +188,13 @@ def search_papers(topic: str, max_results: int = config.ARXIV_CANDIDATES) -> Lis
         except ArxivUnavailable:
             logger.warning("title query failed; using general results only")
 
+    # One entry per paper: arXiv may return two versions of the same paper.
     merged = {}
     for p in ti_results + all_results:
-        merged[p.arxiv_id] = p
+        base, version = split_version(p.arxiv_id)
+        kept = merged.get(base)
+        if kept is None or version > split_version(kept.arxiv_id)[1]:
+            merged[base] = p
 
     papers = list(merged.values())
     papers.sort(key=lambda p: _tier(p, norm_topic, topic_words))
@@ -196,6 +202,15 @@ def search_papers(topic: str, max_results: int = config.ARXIV_CANDIDATES) -> Lis
     if papers:
         _cache_put(key, papers)
     return papers
+
+
+_VERSION = re.compile(r"v(\d+)$")
+
+
+def split_version(arxiv_id: str) -> Tuple[str, int]:
+    """'2605.12335v2' -> ('2605.12335', 2); 'hep-th/9804003' -> ('hep-th/9804003', 0)."""
+    m = _VERSION.search(arxiv_id)
+    return (arxiv_id[: m.start()], int(m.group(1))) if m else (arxiv_id, 0)
 
 
 def _normalize(s: str) -> str:
