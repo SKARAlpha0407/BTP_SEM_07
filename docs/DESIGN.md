@@ -104,8 +104,10 @@ pulsing skeleton walls, animated particles on the graph, and copy like
    prints nothing.
 3. Look at it rendered: light and dark, 1440, 1180 and 400px wide, and assert
    `document.documentElement.scrollWidth` equals the viewport width.
-   - The backend's CORS only allows `http://localhost:3000`, so serve the build
-     there (`npx next start -p 3000`, with `./dev.sh` stopped).
+   - The backend's CORS allows `http://localhost:3000`, `http://127.0.0.1:3000`
+     and this project's Vercel domains (`CORS_ORIGINS`, `CORS_ORIGIN_REGEX`), so
+     serve a local build on port 3000 (`npx next start -p 3000`, with `./dev.sh`
+     stopped).
    - Brave is Chromium: drive it with `puppeteer-core` from a tool folder outside
      the repo (`/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`,
      args `--use-angle=swiftshader --enable-unsafe-swiftshader` for WebGL).
