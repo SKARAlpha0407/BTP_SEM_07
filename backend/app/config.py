@@ -53,9 +53,9 @@ TITLE_BOOST = _f("TITLE_BOOST", 0.15)
 # --- Retrieval --------------------------------------------------------------
 ARXIV_CANDIDATES = _i("ARXIV_CANDIDATES", 50)
 HYBRID_RETRIEVAL = _b("HYBRID_RETRIEVAL", True)  # BM25 + dense, fused with RRF
-# Order of the top results with hybrid on: "score" (rescaled dense score, the shown value)
-# or "fused" (RRF order). Kept at "score" until the neutral-pool test decides.
-DISPLAY_ORDER = os.environ.get("DISPLAY_ORDER", "score")
+# Order of the top results with hybrid on: "fused" (RRF order, fused score shown) or
+# "score" (re-sorted by the rescaled dense score, which is then shown).
+DISPLAY_ORDER = os.environ.get("DISPLAY_ORDER", "fused")
 RRF_K = _i("RRF_K", 60)
 
 # --- arXiv politeness (avoids HTTP 429) --------------------------------------

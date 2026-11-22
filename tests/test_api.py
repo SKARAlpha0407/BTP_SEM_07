@@ -32,7 +32,6 @@ def client(monkeypatch):
 
 def test_search_pipeline(client, monkeypatch):
     from backend.app import config
-    monkeypatch.setattr(config, "DISPLAY_ORDER", "score")  # scores are sorted in this mode
     r = client.post("/search", json={"topic": "A survey of speech recognition", "max_results": 5})
     assert r.status_code == 200, r.text
     body = r.json()
@@ -107,11 +106,9 @@ def test_openapi_documents_error_responses(client):
     assert {"200", "404", "422", "429", "500", "503"} <= set(spec["paths"]["/search"]["post"]["responses"])
 
 
-def test_fused_order_option(client, monkeypatch):
-    from backend.app import config, main
+def test_fused_order_is_the_default(client):
+    from backend.app import main
     from backend.app.embedding_service import rank_with_cached_vectors
-
-    monkeypatch.setattr(config, "DISPLAY_ORDER", "fused")
 
     topic = "speech recognition"
     papers = [Paper(title=r["title"], authors=["Ada Lovelace"], abstract=r["abstract"], arxiv_id=r["arxiv_id"],
@@ -122,3 +119,11 @@ def test_fused_order_option(client, monkeypatch):
     r = client.post("/search", json={"topic": topic, "max_results": 5})
     assert r.status_code == 200, r.text
     assert [p["title"] for p in r.json()["papers"]] == [p.title for p in ranked[:5]]
+
+
+def test_score_order_option(client, monkeypatch):
+    from backend.app import config
+    monkeypatch.setattr(config, "DISPLAY_ORDER", "score")
+    r = client.post("/search", json={"topic": "speech recognition", "max_results": 5})
+    scores = [p["relevance_score"] for p in r.json()["papers"]]
+    assert scores == sorted(scores, reverse=True)

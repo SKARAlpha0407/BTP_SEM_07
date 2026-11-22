@@ -66,6 +66,11 @@ def _hybrid_reorder(topic: str, papers: list, vectors: list):
     lex_order = sorted(range(len(papers)), key=lambda i: -float(lex[i]))
     dense_order = list(range(len(papers)))  # papers arrive dense-ranked
     fused = rrf_fuse([dense_order, lex_order], k=config.RRF_K)
+    # Fused score scaled to 0..1: 1.0 = first in both the dense and the BM25 ranking.
+    k = config.RRF_K
+    lex_rank = {i: r for r, i in enumerate(lex_order)}
+    for i, p in enumerate(papers):
+        p.fused_score = (1 / (k + 1 + i) + 1 / (k + 1 + lex_rank[i])) / (2 / (k + 1))
     pinned = [i for i in fused if (papers[i].relevance_score or 0) >= 0.999]
     rest = [i for i in fused if i not in set(pinned)]
     order = pinned + rest
@@ -415,9 +420,17 @@ def search(req: SearchRequest, request: Request):
                     )
             top_papers = ranked_papers[: req.max_results]
             _calibrate_scores(top_papers, topic)
-            # DISPLAY_ORDER=score (default) shows the top results in order of the
-            # displayed score; DISPLAY_ORDER=fused keeps the RRF order instead.
-            if not (config.HYBRID_RETRIEVAL and config.DISPLAY_ORDER == "fused"):
+            # DISPLAY_ORDER=fused (default) keeps the RRF order and shows the fused
+            # score; it ranked the query's own paper higher than re-sorting by the
+            # dense score on short queries over the whole corpus
+            # (eval/short_queries.py --pool full). DISPLAY_ORDER=score re-sorts by
+            # the rescaled dense score instead.
+            if config.HYBRID_RETRIEVAL and config.DISPLAY_ORDER == "fused":
+                # Show the fused score, so the shown value follows the shown order.
+                for p in top_papers:
+                    if (p.relevance_score or 0) < 0.999 and getattr(p, "fused_score", None) is not None:
+                        p.relevance_score = round(p.fused_score, 4)
+            else:
                 top_papers.sort(key=lambda p: p.relevance_score or 0.0, reverse=True)
 
             try:

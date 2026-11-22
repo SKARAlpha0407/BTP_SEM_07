@@ -78,7 +78,7 @@ def test_answers_with_failed_parts_are_not_saved(setup, monkeypatch):
 def test_answer_key_changes_with_answer_settings(monkeypatch):
     from backend.app import config, main
     base = main._config_key()
-    for name, value in [("DISPLAY_ORDER", "fused"), ("GRAPH_CLUSTERING", "components"), ("TITLE_BOOST", 0.2)]:
+    for name, value in [("DISPLAY_ORDER", "score"), ("GRAPH_CLUSTERING", "components"), ("TITLE_BOOST", 0.2)]:
         old = getattr(config, name)
         monkeypatch.setattr(config, name, value)
         assert main._config_key() != base, name

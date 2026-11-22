@@ -745,7 +745,7 @@ function PaperRow({
         <span className="truncate text-[12px] text-muted tabular-nums">
           {firstAuthor(paper)} · {paper.published?.slice(0, 4)} · <span className="font-mono">{paper.categories?.[0]}</span>
         </span>
-        <span className="flex items-center gap-3" title="Relevance to your topic (0 to 1)">
+        <span className="flex items-center gap-3" title="Relevance to your topic (0 to 1). With hybrid retrieval this combines the meaning and keyword rankings: 1.0 means first in both.">
           <PixelMeter value={score} delay={delay} />
           <span className="font-mono text-[12px] text-ink-2 tabular-nums">{score.toFixed(3)}</span>
         </span>
