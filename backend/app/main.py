@@ -401,10 +401,8 @@ def search(req: SearchRequest, request: Request):
                     )
             top_papers = ranked_papers[: req.max_results]
             _calibrate_scores(top_papers, topic)
-            # With hybrid retrieval the fused (RRF) order is kept by default: on short
-            # topic queries it ranked the query's own paper higher than re-sorting by
-            # the rescaled dense score (eval/short_queries.py). DISPLAY_ORDER=score
-            # restores the dense-score order.
+            # DISPLAY_ORDER=score (default) shows the top results in order of the
+            # displayed score; DISPLAY_ORDER=fused keeps the RRF order instead.
             if not (config.HYBRID_RETRIEVAL and config.DISPLAY_ORDER == "fused"):
                 top_papers.sort(key=lambda p: p.relevance_score or 0.0, reverse=True)
 

@@ -4,9 +4,11 @@ Kavosh is searched with short topics ("graph neural networks"), not titles.
 This script builds short queries from the corpus and runs them through the
 same ranking steps as /search, once per embedding model:
 
-  1. candidate pool: the top POOL papers by BM25 over title + abstract
-     (a stand-in for arXiv's keyword search, which the app cannot replay
-     offline for 816 queries);
+  1. candidate pool, chosen with --pool:
+       bm25  the top POOL papers by BM25 over title + abstract (a stand-in for
+             arXiv's keyword search, which cannot be replayed offline);
+       full  all corpus papers, so neither BM25 nor the embedding pre-selects
+             the candidates (the neutral variant);
   2. dense ranking of the pool by cosine(query, abstract) with the model;
   3. optional hybrid step: backend.app.main._hybrid_reorder (BM25 + RRF);
   4. top 5, scores rescaled by backend.app.main._calibrate_scores;
@@ -95,6 +97,7 @@ def main():
     ap.add_argument("--models", nargs="+", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--pool", choices=["bm25", "full"], default="bm25")
     args = ap.parse_args()
 
     from backend.app import main as app  # the app's own ranking helpers
@@ -119,7 +122,7 @@ def main():
             q_vecs = np.vstack([emb.encode_queries(qs[i:i + 64]) for i in range(0, n, 64)])
             acc = {k: [] for k in ("dense", "hybrid_A", "hybrid_B")}
             for qi, q in enumerate(qs):
-                pool = list(np.argsort(-bm25_all.scores(q))[:POOL])
+                pool = list(range(n)) if args.pool == "full" else list(np.argsort(-bm25_all.scores(q))[:POOL])
                 sims = doc_vecs[pool] @ q_vecs[qi]
                 dense_order = [pool[k] for k in np.argsort(-sims, kind="stable")]
                 vec_of = {pool[k]: doc_vecs[pool[k]].tolist() for k in range(len(pool))}
@@ -157,9 +160,10 @@ def main():
 
     np.savez_compressed(os.path.join(args.out, "per_query.npz"), **per_query)
     with open(os.path.join(args.out, "results.json"), "w") as fh:
-        json.dump({"n_queries": n, "pool": POOL, "top": TOP, "topical_base_rate": base_rate,
+        json.dump({"n_queries": n, "pool": args.pool, "pool_size": POOL if args.pool == "bm25" else n, "top": TOP, "topical_base_rate": base_rate,
                    "examples": {k: v[:5] for k, v in queries.items()}, "rows": rows}, fh, indent=2)
-    lines = [f"# Short topic queries ({n} per style, pool {POOL} by BM25, top {TOP})", "",
+    pool_txt = f"pool {POOL} by BM25" if args.pool == "bm25" else f"pool = all {n} papers"
+    lines = [f"# Short topic queries ({n} per style, {pool_txt}, top {TOP})", "",
              f"Topical base rate (random pair shares a category): {base_rate:.3f}", "",
              "| Model | Style | Variant | hit@1 | MRR@5 | nDCG@5 | recall@5 | topical P@5 |",
              "|---|---|---|---|---|---|---|---|"]

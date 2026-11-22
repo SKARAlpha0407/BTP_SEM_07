@@ -1,0 +1,141 @@
+{
+  "topics": 20,
+  "results": {
+    "all-MiniLM-L6-v2": {
+      "distinct_primary_categories_per_topic": 5.25,
+      "components@1.0": {
+        "clusters": 5.0,
+        "multi": 1.5,
+        "largest": 0.8216666666666667,
+        "nmi": 0.4067394741829971
+      },
+      "modularity@0.5": {
+        "clusters": 5.55,
+        "multi": 2.05,
+        "largest": 0.715,
+        "nmi": 0.47858013373740454
+      },
+      "modularity@1.0": {
+        "clusters": 7.15,
+        "multi": 3.65,
+        "largest": 0.36166666666666664,
+        "nmi": 0.4744840102984799
+      },
+      "modularity@1.5": {
+        "clusters": 9.85,
+        "multi": 5.75,
+        "largest": 0.23666666666666666,
+        "nmi": 0.45272923855956604
+      },
+      "nmi_gain_mod1_vs_components": 0.06774453611548281,
+      "topics_better_worse_tied": [
+        13,
+        6,
+        1
+      ],
+      "wilcoxon_p": 0.12621414954905977
+    },
+    "BAAI/bge-small-en-v1.5": {
+      "distinct_primary_categories_per_topic": 5.1,
+      "components@1.0": {
+        "clusters": 4.8,
+        "multi": 1.55,
+        "largest": 0.8166666666666668,
+        "nmi": 0.3785653706911343
+      },
+      "modularity@0.5": {
+        "clusters": 5.7,
+        "multi": 2.45,
+        "largest": 0.635,
+        "nmi": 0.455374850535802
+      },
+      "modularity@1.0": {
+        "clusters": 7.1,
+        "multi": 3.85,
+        "largest": 0.3583333333333333,
+        "nmi": 0.4627764704784016
+      },
+      "modularity@1.5": {
+        "clusters": 9.55,
+        "multi": 5.45,
+        "largest": 0.25166666666666665,
+        "nmi": 0.44121327833724067
+      },
+      "nmi_gain_mod1_vs_components": 0.08421109978726733,
+      "topics_better_worse_tied": [
+        14,
+        6,
+        0
+      ],
+      "wilcoxon_p": 0.082550048828125
+    },
+    "intfloat/e5-small-v2": {
+      "distinct_primary_categories_per_topic": 5.3,
+      "components@1.0": {
+        "clusters": 4.9,
+        "multi": 1.6,
+        "largest": 0.8083333333333333,
+        "nmi": 0.36615639018126006
+      },
+      "modularity@0.5": {
+        "clusters": 5.75,
+        "multi": 2.45,
+        "largest": 0.6,
+        "nmi": 0.46229248848833937
+      },
+      "modularity@1.0": {
+        "clusters": 6.85,
+        "multi": 3.55,
+        "largest": 0.39166666666666666,
+        "nmi": 0.468201997029114
+      },
+      "modularity@1.5": {
+        "clusters": 9.05,
+        "multi": 5.2,
+        "largest": 0.2683333333333333,
+        "nmi": 0.4502753020198031
+      },
+      "nmi_gain_mod1_vs_components": 0.10204560684785409,
+      "topics_better_worse_tied": [
+        13,
+        5,
+        2
+      ],
+      "wilcoxon_p": 0.009562906117832044
+    },
+    "thenlper/gte-small": {
+      "distinct_primary_categories_per_topic": 5.15,
+      "components@1.0": {
+        "clusters": 4.75,
+        "multi": 1.4,
+        "largest": 0.8433333333333334,
+        "nmi": 0.35115139793356676
+      },
+      "modularity@0.5": {
+        "clusters": 5.75,
+        "multi": 2.4,
+        "largest": 0.6049999999999999,
+        "nmi": 0.4463040710813206
+      },
+      "modularity@1.0": {
+        "clusters": 7.15,
+        "multi": 3.8,
+        "largest": 0.375,
+        "nmi": 0.46818439714459315
+      },
+      "modularity@1.5": {
+        "clusters": 9.7,
+        "multi": 5.3,
+        "largest": 0.2483333333333333,
+        "nmi": 0.4270183819634606
+      },
+      "nmi_gain_mod1_vs_components": 0.11703299921102639,
+      "topics_better_worse_tied": [
+        14,
+        5,
+        1
+      ],
+      "wilcoxon_p": 0.024223724693740165
+    }
+  }
+}

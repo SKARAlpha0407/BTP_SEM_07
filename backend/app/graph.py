@@ -82,17 +82,19 @@ def build_links(papers: Sequence[Any], nodes: List[Dict[str, Any]], sim: np.ndar
     return links
 
 
-def cluster(n: int, links: List[Dict[str, Any]], method: str = "components") -> Dict[int, List[int]]:
+def cluster(n: int, links: List[Dict[str, Any]], method: str = "components",
+            resolution: float = 1.0) -> Dict[int, List[int]]:
     """Group node indices. 'components': connected components of the link graph.
     'modularity': greedy modularity communities on the weighted graph
-    (Clauset-Newman-Moore, networkx), which splits long chains of links."""
+    (Clauset-Newman-Moore, networkx; resolution 1.0 is the standard modularity,
+    higher values give more, smaller groups), which splits long chains of links."""
     if method == "modularity" and links:
         import networkx as nx
 
         g = nx.Graph()
         g.add_nodes_from(range(n))
         g.add_weighted_edges_from((l["source"], l["target"], l["weight"]) for l in links)
-        comms = nx.algorithms.community.greedy_modularity_communities(g, weight="weight")
+        comms = nx.algorithms.community.greedy_modularity_communities(g, weight="weight", resolution=resolution)
         groups = sorted((sorted(c) for c in comms), key=lambda c: (-len(c), c[0]))
         return {cid: members for cid, members in enumerate(groups)}
 

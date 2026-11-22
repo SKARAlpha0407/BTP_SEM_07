@@ -107,9 +107,11 @@ def test_openapi_documents_error_responses(client):
     assert {"200", "404", "422", "429", "500", "503"} <= set(spec["paths"]["/search"]["post"]["responses"])
 
 
-def test_fused_order_is_kept_by_default(client):
-    from backend.app import main
+def test_fused_order_option(client, monkeypatch):
+    from backend.app import config, main
     from backend.app.embedding_service import rank_with_cached_vectors
+
+    monkeypatch.setattr(config, "DISPLAY_ORDER", "fused")
 
     topic = "speech recognition"
     papers = [Paper(title=r["title"], authors=["Ada Lovelace"], abstract=r["abstract"], arxiv_id=r["arxiv_id"],
