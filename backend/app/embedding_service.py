@@ -27,15 +27,15 @@ def _normalize(s: str) -> str:
 
 
 def embed_text(text: str) -> np.ndarray:
-    """Embed one string. Returns a 1-D normalised vector."""
-    return _embedder().encode([text])[0]
+    """Embed one search topic (as a query). Returns a 1-D normalised vector."""
+    return _embedder().encode_queries([text])[0]
 
 
 def embed_batch(texts) -> Optional[np.ndarray]:
-    """Embed a list of strings. Returns (n, dim) or None for an empty list."""
+    """Embed abstracts (as documents). Returns (n, dim) or None for an empty list."""
     if not texts:
         return None
-    return _embedder().encode([t or "" for t in texts])
+    return _embedder().encode_documents([t or "" for t in texts])
 
 
 def cosine_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:

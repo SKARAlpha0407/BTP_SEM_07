@@ -34,18 +34,15 @@ class DenseSystem(System):
         self.batch_size = batch_size
         self.doc_vecs = None
 
-    def _encode(self, texts: List[str]) -> np.ndarray:
-        parts = [
-            self.emb.encode(texts[i:i + self.batch_size])
-            for i in range(0, len(texts), self.batch_size)
-        ]
+    def _encode(self, texts: List[str], fn) -> np.ndarray:
+        parts = [fn(texts[i:i + self.batch_size]) for i in range(0, len(texts), self.batch_size)]
         return np.vstack(parts)
 
     def index(self, docs):
-        self.doc_vecs = self._encode(docs)
+        self.doc_vecs = self._encode(docs, self.emb.encode_documents)
 
     def score(self, queries):
-        return self._encode(queries) @ self.doc_vecs.T
+        return self._encode(queries, self.emb.encode_queries) @ self.doc_vecs.T
 
 
 class BM25System(System):

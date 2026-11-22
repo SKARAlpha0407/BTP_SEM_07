@@ -51,6 +51,14 @@ class Embedder:
     def encode(self, texts: Sequence[str]) -> np.ndarray:  # pragma: no cover
         raise NotImplementedError
 
+    # Retrieval models trained with different inputs for queries and documents
+    # (e5, bge) override these; for the rest both are plain encode().
+    def encode_queries(self, texts: Sequence[str]) -> np.ndarray:
+        return self.encode(texts)
+
+    def encode_documents(self, texts: Sequence[str]) -> np.ndarray:
+        return self.encode(texts)
+
 
 class SentenceTransformerEmbedder(Embedder):
     """Contextual sentence encoder (MiniLM, bge, mpnet, ...), CPU-only.
@@ -61,10 +69,22 @@ class SentenceTransformerEmbedder(Embedder):
 
     family = "contextual"
 
+    # Input prefixes recommended on each model's card for retrieval.
+    #   e5 (intfloat/e5-*):  "query: " / "passage: " on every input
+    #   bge English v1.5:    an instruction before short queries, nothing on passages
+    _PREFIXES = (
+        ("e5-", "query: ", "passage: "),
+        ("bge-", "Represent this sentence for searching relevant passages: ", ""),
+    )
+
     def __init__(self, model_name: str):
         self.name = model_name
         self._model = None
         self._lock = threading.Lock()
+        low = model_name.lower()
+        self.query_prefix, self.doc_prefix = next(
+            ((q, d) for key, q, d in self._PREFIXES if key in low), ("", "")
+        )
 
     def _load(self):
         if self._model is None:
@@ -91,6 +111,12 @@ class SentenceTransformerEmbedder(Embedder):
                 show_progress_bar=False,
             )
         return np.asarray(out, dtype=np.float32)
+
+    def encode_queries(self, texts: Sequence[str]) -> np.ndarray:
+        return self.encode([self.query_prefix + t for t in texts])
+
+    def encode_documents(self, texts: Sequence[str]) -> np.ndarray:
+        return self.encode([self.doc_prefix + t for t in texts])
 
 
 class CharNgramHashEmbedder(Embedder):
