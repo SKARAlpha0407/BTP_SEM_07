@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StrictInt, field_validator
 from typing import Any, Dict, List
 import os
 import math
@@ -19,6 +19,7 @@ from .embedding_service import (
 from .grounding import grounding_report
 from .hybrid import BM25, rrf_fuse, matched_terms
 from .llm_service import (
+    is_placeholder_insight,
     extract_insights_batch,
     synthesize_results,
     get_cluster_labels,
@@ -79,33 +80,40 @@ if not os.environ.get("GROQ_API_KEY"):
 app = FastAPI(title="Kavosh API")
 
 # ---------------------------------------------------------------------------
-# CORS — allow the Next.js dev server (localhost:3000) to call this API.
-# Both localhost and 127.0.0.1 variants are listed so neither origin gets
-# blocked depending on how the browser resolves localhost.
+# CORS: the local dev server and this project's Vercel deployments only.
+# No cookies are used, so credentials are off. Override with CORS_ORIGINS
+# (comma-separated) and CORS_ORIGIN_REGEX.
 # ---------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
-    allow_origin_regex=r"https://.*\.vercel\.app",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=config.CORS_ORIGINS,
+    allow_origin_regex=config.CORS_ORIGIN_REGEX or None,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
+# Developer pages: served to requests made on this machine, hidden from
+# visitors who arrive through the tunnel (or set EXPOSE_DOCS=1).
+_PRIVATE_PATHS = ("/docs", "/redoc", "/openapi.json", "/metrics")
+
+
 @app.middleware("http")
-async def add_cache_control(request, call_next):
+async def private_pages_and_cache_control(request: Request, call_next):
+    path = request.url.path
+    if path.startswith(_PRIVATE_PATHS) and not config.EXPOSE_DOCS:
+        peer = request.client.host if request.client else None
+        if not ratelimit.is_loopback(peer) or ratelimit.is_proxied(request.headers):
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
     response = await call_next(request)
-    if not request.url.path.startswith(("/docs", "/redoc", "/openapi")):
+    if not path.startswith(("/docs", "/redoc", "/openapi")):
         response.headers["Cache-Control"] = "no-store"
     return response
 
 
 class SearchRequest(BaseModel):
     topic: str = Field(..., min_length=1, max_length=500)
-    max_results: int = Field(default=5, ge=1, le=50)
+    max_results: StrictInt = Field(default=5, ge=1, le=50)
 
     @field_validator("topic")
     @classmethod
@@ -159,9 +167,18 @@ class SearchResponse(BaseModel):
     meta: Dict[str, Any] = {}
 
 
+@app.head("/health", include_in_schema=False)
 @app.get("/health")
 def health():
-    return {"status": "ok", "embed_model": EMBED_MODEL, "llm_model": MODEL,
+    db = "ok"
+    try:
+        from sqlalchemy import text as _text
+        from .db.connection import SessionLocal
+        with SessionLocal() as s:
+            s.execute(_text("SELECT 1"))
+    except Exception:
+        db = "unavailable"
+    return {"status": "ok", "db": db, "embed_model": EMBED_MODEL, "llm_model": MODEL,
             "hybrid_retrieval": config.HYBRID_RETRIEVAL}
 
 
@@ -199,15 +216,25 @@ def _stale_cached_papers(query_vec, limit: int) -> list:
         return []
 
 
-@app.post("/search", response_model=SearchResponse)
+class ErrorDetail(BaseModel):
+    detail: str
+
+
+_RETRY_AFTER = {"Retry-After": {"description": "Seconds to wait before retrying", "schema": {"type": "integer"}}}
+SEARCH_RESPONSES = {
+    404: {"model": ErrorDetail, "description": "arXiv returned no papers for the topic"},
+    429: {"model": ErrorDetail, "description": "Too many searches from this visitor or in total", "headers": _RETRY_AFTER},
+    500: {"model": ErrorDetail, "description": "Unexpected server error"},
+    503: {"model": ErrorDetail, "description": "arXiv is unavailable and no stored papers match", "headers": _RETRY_AFTER},
+}
+
+
+@app.post("/search", response_model=SearchResponse, responses=SEARCH_RESPONSES)
 def search(req: SearchRequest, request: Request):
-    allowed, retry_after = ratelimit.check(
-        ratelimit.client_key(
-            request.headers.get("x-forwarded-for"),
-            request.client.host if request.client else None,
-        ),
-        config.SEARCH_RATE_LIMIT_PER_MIN,
-    )
+    visitor = ratelimit.client_key(request.headers, request.client.host if request.client else None)
+    allowed, retry_after = ratelimit.check(visitor, config.SEARCH_RATE_LIMIT_PER_MIN)
+    if allowed:
+        allowed, retry_after = ratelimit.check(ratelimit.GLOBAL_KEY, config.SEARCH_GLOBAL_LIMIT_PER_MIN)
     if not allowed:
         telemetry.incr("search_rate_limited")
         raise HTTPException(
@@ -341,6 +368,8 @@ def search(req: SearchRequest, request: Request):
             import logging
             logging.getLogger(__name__).exception("insight cache read failed")
 
+        # Placeholder rows ('Error' / 'N/A' everywhere) carry no content; refetch them.
+        cached = {k: v for k, v in cached.items() if not is_placeholder_insight(v)}
         missing = [p for p in top_papers if p.arxiv_id not in cached]
         telemetry.incr("insights_requested", len(top_papers))
         telemetry.incr("insights_from_cache", len(top_papers) - len(missing))
@@ -365,9 +394,10 @@ def search(req: SearchRequest, request: Request):
             else:
                 p.summary = None
 
-        if fresh_by_id:
+        to_save = [(k, v) for k, v in fresh_by_id.items() if not is_placeholder_insight(v)]
+        if to_save:
             try:
-                save_insights(list(fresh_by_id.items()), MODEL)
+                save_insights(to_save, MODEL)
             except Exception:
                 import logging
                 logging.getLogger(__name__).exception("insight cache write failed")
@@ -394,7 +424,9 @@ def search(req: SearchRequest, request: Request):
             except ValueError:
                 year = 0
             
-            first_author = p.authors[0].split()[-1] if p.authors else "Unknown"
+            first_author = next(
+                (a.split()[-1] for a in (p.authors or []) if a and a.split()), "Unknown"
+            )
             short_label = f"{first_author} {year}" if year > 0 else first_author
             cat = p.categories[0] if p.categories else ""
             auths = list({a.split()[-1] for a in (p.authors or []) if a.split()})[:5]
@@ -530,12 +562,12 @@ def search(req: SearchRequest, request: Request):
     except HTTPException:
         telemetry.incr("search_http_error")
         raise
-    except Exception as e:
+    except Exception:
         telemetry.incr("search_error")
         # Log the full traceback instead of returning a bare 500.
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"pipeline error: {e}")
+        raise HTTPException(status_code=500, detail="The search failed on the server. Please try again.")
 
 
 @app.exception_handler(RequestValidationError)
@@ -546,14 +578,6 @@ async def validation_exception_handler(request, exc):
         content={"detail": jsonable_encoder(exc.errors())},
     )
 
-@app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-async def catch_all_route(full_path: str):
-    return JSONResponse(
-        status_code=404,
-        content={"detail": "Endpoint not found", "path": f"/{full_path}"},
-    )
-
-
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

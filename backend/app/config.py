@@ -56,7 +56,18 @@ RRF_K = _i("RRF_K", 60)
 ARXIV_MIN_INTERVAL = _f("ARXIV_MIN_INTERVAL", 3.0)         # seconds between any two arXiv requests
 ARXIV_CACHE_TTL_HOURS = _f("ARXIV_CACHE_TTL_HOURS", 6.0)   # reuse a topic's arXiv results
 ARXIV_COOLDOWN_SECONDS = _f("ARXIV_COOLDOWN_SECONDS", 60.0)  # pause arXiv calls after a 429
+ARXIV_HTTP_TIMEOUT = _f("ARXIV_HTTP_TIMEOUT", 20.0)     # seconds per arXiv HTTP request
+ARXIV_LOCK_WAIT = _f("ARXIV_LOCK_WAIT", 45.0)           # max wait for the shared arXiv lock
 SEARCH_RATE_LIMIT_PER_MIN = _i("SEARCH_RATE_LIMIT_PER_MIN", 10)  # per visitor; 0 turns it off
+SEARCH_GLOBAL_LIMIT_PER_MIN = _i("SEARCH_GLOBAL_LIMIT_PER_MIN", 30)  # all visitors together; 0 turns it off
+
+# --- Access ------------------------------------------------------------------
+CORS_ORIGINS = [o.strip() for o in os.environ.get(
+    "CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,https://btp-sem-07.vercel.app"
+).split(",") if o.strip()]
+# This project's Vercel preview deployments (btp-sem-07-<hash>-<team>.vercel.app).
+CORS_ORIGIN_REGEX = os.environ.get("CORS_ORIGIN_REGEX", r"https://btp-sem-07(-[a-z0-9-]+)?\.vercel\.app")
+EXPOSE_DOCS = _b("EXPOSE_DOCS", False)  # serve /docs, /openapi.json and /metrics to tunnel visitors too
 
 # --- Graph ------------------------------------------------------------------
 GRAPH_MAX_NODES = _i("GRAPH_MAX_NODES", 30)

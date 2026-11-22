@@ -1,7 +1,6 @@
 """Repository layer for paper data operations."""
 import json
 
-from datetime import datetime
 from typing import Any
 
 from sqlalchemy import text, func
@@ -43,7 +42,7 @@ def upsert_embedding(session: Session, arxiv_id: str, model_name: str, embedding
         arxiv_id=arxiv_id,
         model_name=model_name,
         embedding=embedding,
-        created_at=datetime.utcnow(),
+        created_at=func.now(),
     )
     stmt = stmt.on_conflict_do_update(
         index_elements=["arxiv_id"],
@@ -64,7 +63,7 @@ def upsert_insight(session: Session, arxiv_id: str, llm_model: str, insight: dic
         problem=insight.get("problem"),
         methods=insight.get("methods"),
         benchmarks=insight.get("benchmarks"),
-        created_at=datetime.utcnow(),
+        created_at=func.now(),
     )
     stmt = stmt.on_conflict_do_update(
         index_elements=["arxiv_id", "llm_model"],
@@ -109,6 +108,25 @@ def search_similar(session: Session, query_vec: list[float], top_k: int = 20) ->
     return [(row[0], float(row[1])) for row in result]
 
 
+def _allow_filtered_hnsw(session: Session, top_k: int) -> None:
+    """Let an HNSW scan keep searching until the WHERE filter yields top_k rows.
+
+    Without this, pgvector stops after hnsw.ef_search (default 40) candidates and
+    the age/model filter can leave far fewer than top_k rows. SET LOCAL lasts
+    for the current transaction only. Needs pgvector >= 0.8; skipped otherwise."""
+    version = session.execute(
+        text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+    ).scalar()
+    try:
+        major, minor = (int(x) for x in str(version).split(".")[:2])
+    except ValueError:
+        return
+    if (major, minor) < (0, 8):
+        return
+    session.execute(text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
+    session.execute(text(f"SET LOCAL hnsw.ef_search = {max(100, int(top_k) * 4)}"))
+
+
 def search_similar_with_ttl(
     session: Session,
     query_vec: list[float],
@@ -136,8 +154,12 @@ def search_similar_with_ttl(
     params = {"vec": query_vec, "k": top_k, "age": max_age_hours}
     if model_name:
         params["model"] = model_name
+    _allow_filtered_hnsw(session, top_k)
     result = session.execute(sql, params)
-    return [(row[0], float(row[1])) for row in result]
+    rows = [(row[0], float(row[1])) for row in result]
+    # relaxed_order may return rows slightly out of order; restore it.
+    rows.sort(key=lambda r: r[1], reverse=True)
+    return rows
 
 
 def get_papers_by_ids(session: Session, arxiv_ids: list[str]) -> list[dict]:

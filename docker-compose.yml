@@ -26,8 +26,10 @@ services:
       GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}
       EMBED_MODEL: ${EMBED_MODEL:-all-MiniLM-L6-v2}
       HYBRID_RETRIEVAL: ${HYBRID_RETRIEVAL:-1}
+      # The port is published on this machine only (below), so the docs can be served.
+      EXPOSE_DOCS: ${EXPOSE_DOCS:-1}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy

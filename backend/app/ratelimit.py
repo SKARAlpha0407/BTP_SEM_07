@@ -1,25 +1,49 @@
-"""Per-visitor sliding-window rate limit for /search.
+"""Per-visitor and global sliding-window rate limits for /search.
 
 In memory and per process, which is enough for one backend behind a tunnel.
-Behind a proxy the visitor is the last X-Forwarded-For entry (the address the
-proxy itself saw); without one it is the socket peer.
+Proxy headers are trusted only when the request arrives from this machine
+(the tunnel connects over loopback); anyone else could forge them.
 """
 from __future__ import annotations
 
+import ipaddress
 import threading
 import time
 from collections import deque
-from typing import Deque, Dict, Optional, Tuple
+from typing import Deque, Dict, Mapping, Optional, Tuple
 
 _lock = threading.Lock()
 _hits: Dict[str, Deque[float]] = {}
 _WINDOW = 60.0
 _MAX_KEYS = 10_000
+GLOBAL_KEY = "__all_visitors__"
 
 
-def client_key(forwarded_for: Optional[str], peer: Optional[str]) -> str:
-    if forwarded_for:
-        last = forwarded_for.split(",")[-1].strip()
+def is_loopback(host: Optional[str]) -> bool:
+    if not host:
+        return False
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def is_proxied(headers: Mapping[str, str]) -> bool:
+    return bool(headers.get("cf-connecting-ip") or headers.get("x-forwarded-for"))
+
+
+def client_key(headers: Mapping[str, str], peer: Optional[str]) -> str:
+    """The visitor's address. Behind the local tunnel, use the address the tunnel
+    reports (CF-Connecting-IP, else the last X-Forwarded-For entry); otherwise
+    use the socket peer and ignore forwarding headers."""
+    if is_loopback(peer):
+        cf = (headers.get("cf-connecting-ip") or "").strip()
+        if cf:
+            return cf
+        xff = headers.get("x-forwarded-for") or ""
+        last = xff.split(",")[-1].strip()
         if last:
             return last
     return peer or "unknown"

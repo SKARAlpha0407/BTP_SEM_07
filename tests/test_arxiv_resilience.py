@@ -29,7 +29,7 @@ def test_second_identical_search_uses_the_result_cache(monkeypatch):
         calls.append(q)
         return [_paper(i, f"retrieval augmented generation study {i}") for i in range(5)]
     monkeypatch.setattr(arxiv_client, "_fetch", fake_fetch)
-    first = arxiv_client.search_papers("Retrieval-Augmented Generation", 50)
+    first = arxiv_client.search_papers("Retrieval Augmented Generation", 50)
     again = arxiv_client.search_papers("  retrieval augmented   generation ", 50)
     assert [p.arxiv_id for p in first] == [p.arxiv_id for p in again]
     assert len(calls) == 1  # all: only, and nothing on the repeat
@@ -89,9 +89,14 @@ def test_ratelimit_window():
     assert ratelimit.check("a", 0, now=0.0)[0]  # 0 disables the limit
 
 
-def test_ratelimit_client_key_uses_last_forwarded_entry():
-    assert ratelimit.client_key("9.9.9.9, 1.2.3.4", "10.0.0.1") == "1.2.3.4"
-    assert ratelimit.client_key(None, "10.0.0.1") == "10.0.0.1"
+def test_ratelimit_client_key_trusts_proxy_headers_only_from_loopback():
+    # Through the local tunnel: use the address the tunnel reports.
+    assert ratelimit.client_key({"cf-connecting-ip": "5.6.7.8", "x-forwarded-for": "1.1.1.1"}, "127.0.0.1") == "5.6.7.8"
+    assert ratelimit.client_key({"x-forwarded-for": "9.9.9.9, 1.2.3.4"}, "::1") == "1.2.3.4"
+    # From the network: forged headers are ignored.
+    assert ratelimit.client_key({"x-forwarded-for": "spoof"}, "192.168.1.5") == "192.168.1.5"
+    assert ratelimit.client_key({"cf-connecting-ip": "spoof"}, "10.0.0.1") == "10.0.0.1"
+    assert ratelimit.client_key({}, None) == "unknown"
 
 
 @pytest.fixture()
@@ -113,6 +118,15 @@ def test_search_returns_503_not_500_when_arxiv_is_unavailable(api, monkeypatch):
     assert "busy" in r.json()["detail"]
 
 
+def test_global_search_cap(api, monkeypatch):
+    main, client = api
+    monkeypatch.setattr(config, "SEARCH_RATE_LIMIT_PER_MIN", 0)
+    monkeypatch.setattr(config, "SEARCH_GLOBAL_LIMIT_PER_MIN", 2)
+    monkeypatch.setattr(main, "search_papers", lambda topic, max_results=30: [])
+    codes = [client.post("/search", json={"topic": "x topic"}).status_code for _ in range(3)]
+    assert codes == [404, 404, 429]
+
+
 def test_search_rate_limit_returns_429_with_retry_after(api, monkeypatch):
     main, client = api
     monkeypatch.setattr(config, "SEARCH_RATE_LIMIT_PER_MIN", 2)
@@ -121,3 +135,43 @@ def test_search_rate_limit_returns_429_with_retry_after(api, monkeypatch):
     assert codes == [404, 404, 429]
     r = client.post("/search", json={"topic": "x topic"})
     assert r.status_code == 429 and int(r.headers["retry-after"]) >= 1
+
+
+def test_cache_key_distinguishes_symbols_and_non_latin_queries(monkeypatch):
+    seen = []
+    def fake_fetch(q, limit):
+        seen.append(q)
+        return [_paper(len(seen), f"title {q}")] * 3
+    monkeypatch.setattr(arxiv_client, "_fetch", fake_fetch)
+    for topic in ["C++ templates", "C templates", "量子计算", "Квантовые вычисления"]:
+        arxiv_client.search_papers(topic, 50)
+    queried = {q for q in seen if q.startswith("all:")}
+    assert len(queried) == 4  # no two topics were answered from one cache entry
+    arxiv_client.search_papers("c++   TEMPLATES", 50)
+    assert len([q for q in seen if q.startswith("all:")]) == 4  # same query, different case/spacing: cached
+
+
+def test_cached_papers_are_independent_copies(monkeypatch):
+    monkeypatch.setattr(arxiv_client, "_fetch", lambda q, l: [_paper(1, "graph neural networks")] * 3)
+    first = arxiv_client.search_papers("graph neural networks", 50)
+    first[0].relevance_score = 0.99
+    first[0].summary = {"tldr": "mutated"}
+    first[0].authors.append("Intruder")
+    again = arxiv_client.search_papers("graph neural networks", 50)
+    assert again[0].relevance_score is None and again[0].summary is None
+    assert again[0].authors == ["A"]
+
+
+def test_lock_wait_is_bounded(monkeypatch):
+    monkeypatch.setattr(config, "ARXIV_LOCK_WAIT", 0.05)
+    arxiv_client._lock.acquire()
+    try:
+        with pytest.raises(ArxivUnavailable):
+            arxiv_client._fetch("all:x", 5)
+    finally:
+        arxiv_client._lock.release()
+
+
+def test_arxiv_http_requests_have_a_timeout():
+    req = arxiv_client._client._session.request
+    assert req.keywords.get("timeout") == config.ARXIV_HTTP_TIMEOUT

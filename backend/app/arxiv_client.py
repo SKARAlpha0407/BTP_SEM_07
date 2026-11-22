@@ -1,9 +1,12 @@
+import dataclasses
+import functools
 import logging
 import re
 import threading
 import time
 
 import arxiv
+import requests
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -42,6 +45,11 @@ class ArxivUnavailable(Exception):
 # is not allowed to retry: a retry after a 429 only adds load, and a failure is
 # handled by the caller (cooldown, stored papers) instead.
 _client = arxiv.Client(page_size=50, delay_seconds=config.ARXIV_MIN_INTERVAL, num_retries=0)
+# The library calls session.get() without a timeout; a stalled connection would
+# otherwise hold _lock (and every other search) forever.
+_client._session.request = functools.partial(
+    requests.Session.request, _client._session, timeout=config.ARXIV_HTTP_TIMEOUT
+)
 _lock = threading.Lock()
 _last_call = 0.0
 _cooldown_until = 0.0
@@ -51,12 +59,26 @@ _cache_lock = threading.Lock()
 _CACHE_MAX = 200
 
 
+def _copy(papers: List["Paper"]) -> List["Paper"]:
+    """Independent copies: the pipeline writes scores and summaries onto papers."""
+    return [
+        dataclasses.replace(p, authors=list(p.authors), categories=list(p.categories))
+        for p in papers
+    ]
+
+
+def _cache_key(safe_query: str, max_results: int) -> Tuple[str, int]:
+    """Key on the escaped query actually sent to arXiv (case- and space-insensitive),
+    so 'C++' and 'C', or two non-Latin queries, never share an entry."""
+    return (" ".join(safe_query.casefold().split()), max_results)
+
+
 def _cache_get(key):
     ttl = config.ARXIV_CACHE_TTL_HOURS * 3600
     with _cache_lock:
         hit = _cache.get(key)
         if hit and time.monotonic() - hit[0] < ttl:
-            return list(hit[1])
+            return _copy(hit[1])
         _cache.pop(key, None)
     return None
 
@@ -66,7 +88,7 @@ def _cache_put(key, papers):
         if len(_cache) >= _CACHE_MAX:
             oldest = min(_cache, key=lambda k: _cache[k][0])
             del _cache[oldest]
-        _cache[key] = (time.monotonic(), list(papers))
+        _cache[key] = (time.monotonic(), _copy(papers))
 
 
 def reset_state() -> None:
@@ -81,7 +103,9 @@ def reset_state() -> None:
 def _fetch(query: str, limit: int) -> List[Paper]:
     """One paced arXiv request. Raises ArxivUnavailable on 429 or any failure."""
     global _last_call, _cooldown_until
-    with _lock:
+    if not _lock.acquire(timeout=config.ARXIV_LOCK_WAIT):
+        raise ArxivUnavailable("too many searches are waiting for arXiv")
+    try:
         now = time.monotonic()
         if now < _cooldown_until:
             raise ArxivUnavailable("arXiv is rate-limiting; cooling down")
@@ -118,6 +142,8 @@ def _fetch(query: str, limit: int) -> List[Paper]:
             raise ArxivUnavailable(str(exc)) from exc
         finally:
             _last_call = time.monotonic()
+    finally:
+        _lock.release()
 
 
 def _tier(p: Paper, norm_topic: str, topic_words: List[str]) -> int:
@@ -137,13 +163,13 @@ def _tier(p: Paper, norm_topic: str, topic_words: List[str]) -> int:
 _TITLE_QUERY_SKIP_AT = 3
 
 
-def search_papers(topic: str, max_results: int = 30) -> List[Paper]:
+def search_papers(topic: str, max_results: int = config.ARXIV_CANDIDATES) -> List[Paper]:
     safe = _escape(topic)
     if not safe:
         return []
 
     norm_topic = _normalize(topic)
-    key = (norm_topic, max_results)
+    key = _cache_key(safe, max_results)
     cached = _cache_get(key)
     if cached is not None:
         return cached

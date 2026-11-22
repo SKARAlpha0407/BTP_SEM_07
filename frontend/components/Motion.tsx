@@ -36,8 +36,9 @@ export function RevealWords({
 }
 
 /**
- * A line that is pale until it scrolls into the middle of the screen, then
+ * A line that is muted until it scrolls into the middle of the screen, then
  * darkens to ink, like reading down a page. Scrolling back fades it again.
+ * The muted state keeps readable contrast; reduced motion shows ink at once.
  */
 export function ScrollInk({ children, className }: { children: React.ReactNode; className?: string }) {
   const ref = useRef<HTMLParagraphElement>(null);
@@ -45,6 +46,11 @@ export function ScrollInk({ children, className }: { children: React.ReactNode; 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // With reduced motion the line is simply shown in ink.
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setLit(true);
+      return;
+    }
     const io = new IntersectionObserver(([e]) => setLit(e.isIntersecting || e.boundingClientRect.top < 0), {
       rootMargin: '0px 0px -38% 0px',
     });
@@ -54,7 +60,7 @@ export function ScrollInk({ children, className }: { children: React.ReactNode; 
   return (
     <p
       ref={ref}
-      className={`transition-colors duration-700 ease-[var(--ease-out-soft)] ${lit ? 'text-ink' : 'text-ghost'} ${className ?? ''}`}
+      className={`transition-colors duration-700 ease-[var(--ease-out-soft)] ${lit ? 'text-ink' : 'text-muted'} ${className ?? ''}`}
     >
       {children}
     </p>

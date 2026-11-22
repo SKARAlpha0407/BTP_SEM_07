@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import logging
 import traceback
 from groq import Groq
 from dotenv import load_dotenv
@@ -9,8 +10,15 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 api_key = os.environ.get("GROQ_API_KEY")
-client = Groq(api_key=api_key) if api_key else None
+client = Groq(api_key=api_key, timeout=60.0) if api_key else None
 MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
+logger = logging.getLogger(__name__)
+
+# Papers per insight call. Larger batches risk running out of completion tokens
+# (the reasoning model counts its reasoning against the same limit).
+INSIGHT_BATCH_SIZE = int(os.environ.get("INSIGHT_BATCH_SIZE", "8"))
+_INSIGHT_FIELDS = ("tldr", "problem", "methods", "benchmarks")
+_PLACEHOLDERS = {"", "N/A", "NA", "ERROR"}
 
 
 def _extract_tldr(summary) -> str:
@@ -37,41 +45,135 @@ def _empty_insight(idx: int = -1) -> dict:
     }
 
 
-_VALID_JSON_ESCAPE = re.compile(r'\\(?![\\"/u])')
+def _error_insight(idx: int = -1) -> dict:
+    return {"index": idx, "tldr": "Error", "problem": "Error",
+            "methods": "Error", "benchmarks": "Error"}
+
+
+def is_placeholder_insight(insight) -> bool:
+    """True when an insight carries no real content (all fields N/A, Error or empty).
+
+    Such insights are never cached, and cached ones are treated as misses."""
+    if not isinstance(insight, dict):
+        return True
+    return all(
+        str(insight.get(f) or "").strip().upper() in _PLACEHOLDERS
+        for f in _INSIGHT_FIELDS
+    )
+
+
+def _clean_insight(item: dict, idx: int) -> dict:
+    out = {"index": idx}
+    for f in _INSIGHT_FIELDS:
+        v = item.get(f)
+        if isinstance(v, (list, tuple)):
+            v = "; ".join(str(x) for x in v)
+        out[f] = str(v).strip() if v is not None and str(v).strip() else "N/A"
+    return out
+
+
+_HEX = set("0123456789abcdefABCDEF")
+
+
+def _repair_backslashes(s: str) -> str:
+    r"""Escape backslashes that are not meant as JSON escapes.
+
+    LLMs often copy LaTeX from abstracts without escaping it. A raw \beta is
+    valid JSON (backspace + 'eta'), and \uparrow is invalid JSON, so both must
+    be repaired. Rules, applied left to right:
+      \\  \"  \/          kept (already valid escapes)
+      \uXXXX              kept when four hex digits follow
+      \b \f \r \t + letter, \n + lowercase letter
+                          treated as a LaTeX command (\beta, \frac, \rho, \theta, \nabla)
+      \n, \t, \r, \b, \f otherwise   kept as JSON escapes
+      anything else       the backslash is escaped (\alpha, \mathbf, \uparrow)
+    """
+    out = []
+    i, n = 0, len(s)
+    while i < n:
+        c = s[i]
+        if c != "\\":
+            out.append(c)
+            i += 1
+            continue
+        nxt = s[i + 1] if i + 1 < n else ""
+        after = s[i + 2] if i + 2 < n else ""
+        if nxt in ('\\', '"', '/'):
+            out.append(c + nxt)
+            i += 2
+        elif nxt == "u" and len(s) >= i + 6 and all(h in _HEX for h in s[i + 2:i + 6]):
+            out.append(s[i:i + 6])
+            i += 6
+        elif nxt in "bfrt" and after.isalpha():
+            out.append("\\\\")
+            i += 1
+        elif nxt == "n" and after.isalpha() and after.islower():
+            out.append("\\\\")
+            i += 1
+        elif nxt in "bfnrt":
+            out.append(c + nxt)
+            i += 2
+        else:
+            out.append("\\\\")
+            i += 1
+    return "".join(out)
+
+
+def _outermost_json(s: str) -> str:
+    """The text from the first { or [ to the matching last } or ], if any."""
+    starts = [i for i in (s.find("{"), s.find("[")) if i != -1]
+    if not starts:
+        return s
+    start = min(starts)
+    end = max(s.rfind("}"), s.rfind("]"))
+    return s[start:end + 1] if end > start else s
 
 
 def _safe_json_loads(text: str):
-    """Parse JSON from an LLM response, tolerating unescaped LaTeX backslashes."""
+    """Parse JSON from an LLM response, tolerating LaTeX backslashes and stray prose."""
     if not text:
         raise ValueError("empty content")
     s = text.strip()
     # Strip markdown fences if present
     if s.startswith("```"):
         s = s.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-    # Always repair. JSON treats \b, \f, \n, \r, \t as valid escapes,
-    # which silently mangles LaTeX (\beta → backspace+eta, \frac → formfeed+rac,
-    # \nabla → newline+abla). Only \\, \", \/, and \u are unambiguously JSON.
-    s = _VALID_JSON_ESCAPE.sub(r'\\\\', s)
-    return json.loads(s)
+    s = _outermost_json(s)
+    return json.loads(_repair_backslashes(s))
 
 
-def extract_insights_batch(papers):
-    """
-    Extracts insights for a batch of papers in a single LLM call.
-    Returns: List of insights, aligned 1:1 with the papers list by position.
+def _align(data, n: int):
+    """Map parsed model output onto n papers. Returns a list of n items or None."""
+    if isinstance(data, dict):
+        papers = data.get("papers")
+        if isinstance(papers, list):
+            data = papers
+        else:
+            list_val = next((v for v in data.values() if isinstance(v, list)), None)
+            if list_val is not None:
+                data = list_val
+            elif all(str(k).isdigit() for k in data):
+                data = [data[k] for k in sorted(data, key=lambda k: int(k))]
+            else:
+                return None
+    if not isinstance(data, list):
+        return None
+    items = [it for it in data if isinstance(it, dict)]
+    if len(items) == n:
+        # Same length as the input: the prompt asks for input order.
+        return items
+    declared = [it.get("index") for it in items]
+    if (
+        all(isinstance(d, int) and 0 <= d < n for d in declared)
+        and len(set(declared)) == len(declared)
+    ):
+        aligned = [None] * n
+        for it in items:
+            aligned[it["index"]] = it
+        return aligned
+    return None
 
-    NOTE: does NOT use response_format=json_object. Same reason as
-    get_cluster_labels below — the gpt-oss reasoning model sometimes emits
-    nothing in the content channel under strict JSON mode, which Groq surfaces
-    as `json_validate_failed` with empty failed_generation. We parse manually
-    with a markdown-fence stripper instead.
-    """
-    if not api_key:
-        return [{"error": "GROQ_API_KEY missing"}] * len(papers)
 
-    if not papers:
-        return []
-
+def _extract_chunk(papers, offset: int):
     papers_text = ""
     for idx, paper in enumerate(papers):
         title = paper.get('title', 'N/A')
@@ -82,12 +184,12 @@ def extract_insights_batch(papers):
         "You are a research assistant. Extract key insights from the following papers. "
         "Respond with a JSON object with a single key 'papers' whose value is an array "
         "with exactly one element per input paper, in the same order. "
-        "Each element must have: 'index' (int, the paper's position), 'tldr' (string), "
-        "'problem' (string), 'methods' (string), and 'benchmarks' (string). "
+        "Each element must have: 'index' (int, the paper's position, starting at 0), "
+        "'tldr' (string), 'problem' (string), 'methods' (string), and 'benchmarks' (string). "
         "If information is missing, use 'N/A'.\n\n"
         f"{papers_text}"
     )
-
+    n = len(papers)
     try:
         chat_completion = client.chat.completions.create(
             messages=[
@@ -97,64 +199,59 @@ def extract_insights_batch(papers):
             model=MODEL,
             extra_body={"reasoning_effort": "low", "max_completion_tokens": 4096},
         )
-
-        content = (chat_completion.choices[0].message.content or "").strip()
+        choice = chat_completion.choices[0]
+        if getattr(choice, "finish_reason", None) == "length":
+            logger.warning("insight batch hit the completion-token limit (%d papers)", n)
+            return [_error_insight(offset + i) for i in range(n)]
+        content = (choice.message.content or "").strip()
         if not content:
-            print("Batch extraction: model returned empty content")
-            return [_empty_insight(i) for i in range(len(papers))]
+            logger.warning("insight batch: model returned empty content")
+            return [_error_insight(offset + i) for i in range(n)]
 
-        # Strip markdown fences if the model added them despite instructions
-        if content.startswith("```"):
-            content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-
-        data = _safe_json_loads(content)
-
-        # Normalize: accept {"papers":[...]}, any single-list object, or index-keyed objects
-        if isinstance(data, dict):
-            list_val = next((v for v in data.values() if isinstance(v, list)), None)
-            if list_val is not None:
-                data = list_val
-            else:
-                data = [
-                    data[k]
-                    for k in sorted(
-                        data.keys(),
-                        key=lambda k: int(k) if str(k).isdigit() else 10**9,
-                    )
-                ]
-
-        if not isinstance(data, list):
-            data = []
-
-        # Align insights to papers by declared 'index', falling back to order
-        aligned = [None] * len(papers)
-        for i, item in enumerate(data):
-            pos = (
-                item.get('index')
-                if isinstance(item, dict) and isinstance(item.get('index'), int)
-                else i
-            )
-            if isinstance(pos, int) and 0 <= pos < len(papers):
-                aligned[pos] = item
-
+        aligned = _align(_safe_json_loads(content), n)
+        if aligned is None:
+            logger.warning("insight batch: could not align %d items to papers", n)
+            return [_error_insight(offset + i) for i in range(n)]
         return [
-            it if it is not None else _empty_insight(i)
+            _clean_insight(it, offset + i) if isinstance(it, dict) else _empty_insight(offset + i)
             for i, it in enumerate(aligned)
         ]
+    except Exception:
+        logger.exception("insight batch failed")
+        return [_error_insight(offset + i) for i in range(n)]
 
-    except Exception as e:
-        print(f"Error during Groq batch extraction: {e}")
-        traceback.print_exc()
-        return [
-            {"index": i, "tldr": "Error", "problem": "Error",
-             "methods": "Error", "benchmarks": "Error"}
-            for i in range(len(papers))
-        ]
+
+def extract_insights_batch(papers):
+    """
+    Extracts insights for papers, INSIGHT_BATCH_SIZE papers per LLM call.
+    Returns: List of insights, aligned 1:1 with the papers list by position.
+    A failed or unparseable call yields 'Error' placeholders for that chunk
+    only; callers must not cache placeholders (see is_placeholder_insight).
+
+    NOTE: does NOT use response_format=json_object. Same reason as
+    get_cluster_labels below — the gpt-oss reasoning model sometimes emits
+    nothing in the content channel under strict JSON mode, which Groq surfaces
+    as `json_validate_failed` with empty failed_generation. We parse manually
+    instead.
+    """
+    if not papers:
+        return []
+    if not client:
+        return [_error_insight(i) for i in range(len(papers))]
+
+    out = []
+    size = max(1, INSIGHT_BATCH_SIZE)
+    for start in range(0, len(papers), size):
+        out.extend(_extract_chunk(papers[start:start + size], start))
+    return out
+
+
+SYNTHESIS_UNAVAILABLE = "A synthesis could not be written right now. The individual papers are listed on the left."
 
 
 def synthesize_results(papers_summaries):
-    if not api_key:
-        return "Synthesis blocked: GROQ_API_KEY missing"
+    if not client:
+        return SYNTHESIS_UNAVAILABLE
 
     summary_text = "\n".join(
         f"Paper: {p.get('title', 'Unknown')}\n"
@@ -173,9 +270,10 @@ def synthesize_results(papers_summaries):
             model=MODEL,
             extra_body={"reasoning_effort": "low"},
         )
-        return completion.choices[0].message.content
-    except Exception as e:
-        return f"Synthesis Error: {str(e)}"
+        return (completion.choices[0].message.content or "").strip() or SYNTHESIS_UNAVAILABLE
+    except Exception:
+        logger.exception("synthesis failed")
+        return SYNTHESIS_UNAVAILABLE
 
 
 def _sanitize_labels(raw) -> dict:

@@ -31,7 +31,7 @@ def _content_terms(text: str) -> set:
 
 
 def grounding_report(insight: Dict[str, Any], title: str, abstract: str) -> Dict[str, Any]:
-    """Return {"score": 0..1, "unsupported": [terms]} for one insight dict."""
+    """Return {"score": 0..1 or None, "unsupported": [terms]} for one insight dict."""
     source = set(tokenize(title)) | set(tokenize(abstract))
     terms: set = set()
     for f in _FIELDS:
@@ -39,7 +39,8 @@ def grounding_report(insight: Dict[str, Any], title: str, abstract: str) -> Dict
         if isinstance(v, str) and v.strip() and v.strip().upper() not in {"N/A", "ERROR"}:
             terms |= _content_terms(v)
     if not terms:
-        return {"score": 1.0, "unsupported": []}
+        # Nothing to check (e.g. a failed or empty summary): no score, not a perfect one.
+        return {"score": None, "unsupported": []}
     # Accept simple inflection differences (plural/-ing/-ed) via a shared 5-char stem.
     stems = {s[:5] for s in source if len(s) >= 5}
     missing = sorted(t for t in terms if t not in source and t[:5] not in stems)

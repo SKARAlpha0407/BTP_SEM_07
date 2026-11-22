@@ -51,7 +51,7 @@ def test_grounding_flags_invented_terms():
     rep = grounding_report(ins, "Contrastive pretraining", "We pretrain with a contrastive loss on ImageNet.")
     assert "cifar" in rep["unsupported"] and "imagenet" not in rep["unsupported"]
     assert 0 < rep["score"] < 1
-    assert grounding_report({"tldr": "N/A"}, "t", "a")["score"] == 1.0
+    assert grounding_report({"tldr": "N/A"}, "t", "a")["score"] is None
 
 
 def test_systems_retrieve_known_items():

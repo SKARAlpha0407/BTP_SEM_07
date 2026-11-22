@@ -2,7 +2,16 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 import { AlertTriangle, ArrowUpRight, Check, Info } from 'lucide-react';
-import { Paper, SearchResponse, backendHint, getApiBase } from '../lib/api';
+import {
+  Paper,
+  SearchError,
+  SearchResponse,
+  apiOverrideHost,
+  backendHint,
+  clearApiOverride,
+  getApiBase,
+  searchResearch,
+} from '../lib/api';
 import { Cursor, PixelMark, PixelMeter, PixelProgress, Pixels, RevealWords, ScrollInk } from '../components/Motion';
 
 /*
@@ -38,6 +47,13 @@ const PIPELINE_STEPS = [
 ];
 
 const LABEL = 'font-mono text-[11px] uppercase tracking-[0.14em]';
+const SEARCH_TIMEOUT_MS = 120_000;
+
+const CACHE_PATH_TEXT: Record<string, { label: string; title: string }> = {
+  cold: { label: 'Live', title: 'Fetched from arXiv for this search' },
+  warm: { label: 'Cached', title: 'Served from papers stored by an earlier search' },
+  stale: { label: 'Stored copy', title: 'arXiv was unavailable, so papers stored earlier are shown' },
+};
 
 export default function Home() {
   const [topic, setTopic] = useState('');
@@ -45,28 +61,67 @@ export default function Home() {
   const [step, setStep] = useState(-1);
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [selectedPaper, setSelectedPaper] = useState<Paper | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SearchError | null>(null);
   // The topic the current results are for (the input can change after a search).
   const [searched, setSearched] = useState('');
   const [view, setView] = useState<'synthesis' | 'paper'>('synthesis');
   const [health, setHealth] = useState<Health | null | 'offline'>(null);
+  const [overrideHost, setOverrideHost] = useState<string | null>(null);
+  const searchCtrl = useRef<AbortController | null>(null);
 
-  useEffect(() => {
+  const checkHealth = (): AbortController => {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 3000);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      ctrl.abort();
+    }, 5000);
+    setHealth(null);
+    setOverrideHost(apiOverrideHost());
     fetch(`${getApiBase()}/health`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((h: Health) => setHealth(h))
-      .catch(() => setHealth('offline'))
+      .catch(() => {
+        // Cancelled by unmount, not a failure.
+        if (ctrl.signal.aborted && !timedOut) return;
+        // A backend chosen by a link that no longer answers is forgotten, and
+        // the default backend is checked instead.
+        if (apiOverrideHost()) {
+          clearApiOverride();
+          checkHealth();
+          return;
+        }
+        setHealth('offline');
+      })
       .finally(() => clearTimeout(timer));
-    return () => ctrl.abort();
+    return ctrl;
+  };
+
+  useEffect(() => {
+    const ctrl = checkHealth();
+    return () => {
+      ctrl.abort();
+      searchCtrl.current?.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const resetBackend = () => {
+    clearApiOverride();
+    checkHealth();
+  };
 
   // `override` lets an example search without waiting for setTopic.
   const handleSearch = async (e?: React.FormEvent, override?: string) => {
     e?.preventDefault();
     const trimmed = (override ?? topic).trim();
     if (!trimmed) return;
+
+    // A new search replaces any search still running.
+    searchCtrl.current?.abort();
+    const ctrl = new AbortController();
+    searchCtrl.current = ctrl;
+    const timeout = setTimeout(() => ctrl.abort(), SEARCH_TIMEOUT_MS);
 
     setLoading(true);
     setError(null);
@@ -75,49 +130,35 @@ export default function Home() {
     setSearched(trimmed);
     setView('synthesis');
 
+    // The checklist only indicates progress: the request starts at once and the
+    // last step stays open until the answer arrives.
+    setStep(0);
+    const ticker = setInterval(() => setStep((s) => Math.min(s + 1, PIPELINE_STEPS.length - 1)), 1200);
+
     try {
-      // Progress display only; the actual work happens in the fetch below.
-      for (let i = 0; i < 5; i++) {
-        setStep(i);
-        await new Promise((r) => setTimeout(r, 400));
-      }
-
-      const res = await fetch(`${getApiBase()}/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: trimmed, max_results: 5 }),
-      });
-
-      // Backend returns 404 when arXiv has no matches for the topic.
-      // Treat that as a valid empty result, not an error.
-      if (res.status === 404) {
-        setResults({
-          papers: [],
-          synthesis: 'No papers found for this topic.',
-          graph: { nodes: [], links: [] },
-        } as SearchResponse);
-        return;
-      }
-
-      if (!res.ok) {
-        const detail = await res.text();
-        throw new Error(`Backend returned ${res.status}: ${detail.slice(0, 200)}`);
-      }
-
-      const data: SearchResponse = await res.json();
+      const data = await searchResearch(trimmed, 5, ctrl.signal);
+      if (searchCtrl.current !== ctrl) return;
       setResults(data);
       if (data.papers.length > 0) {
         setSelectedPaper(data.papers[0]);
       }
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Search failed. The search service did not respond.'
-      );
+      if (searchCtrl.current !== ctrl) return;
+      if (err instanceof SearchError) {
+        setError(err);
+      } else if (err instanceof DOMException && err.name === 'AbortError') {
+        setError(new SearchError('timeout', 'The search took too long and was stopped. Try again, or try a shorter topic.'));
+      } else {
+        setError(new SearchError('server', 'The search failed. Try again.'));
+      }
     } finally {
-      setLoading(false);
-      setStep(-1);
+      clearInterval(ticker);
+      clearTimeout(timeout);
+      if (searchCtrl.current === ctrl) {
+        searchCtrl.current = null;
+        setLoading(false);
+        setStep(-1);
+      }
     }
   };
 
@@ -153,6 +194,8 @@ export default function Home() {
           onSubmit={handleSearch}
           onExample={runExample}
           health={health}
+          overrideHost={overrideHost}
+          onResetBackend={resetBackend}
         />
       ) : (
         <div className="flex min-h-screen flex-col lg:h-screen">
@@ -173,9 +216,13 @@ export default function Home() {
               title="The search did not finish"
               body={
                 <>
-                  <span className="font-mono text-[13px]">{error}</span>
-                  <br />
-                  {backendHint().long}
+                  {error.message}
+                  {error.kind === 'network' && (
+                    <>
+                      <br />
+                      {backendHint().long}
+                    </>
+                  )}
                 </>
               }
               action={
@@ -227,12 +274,16 @@ function StartPage({
   onSubmit,
   onExample,
   health,
+  overrideHost,
+  onResetBackend,
 }: {
   topic: string;
   setTopic: (v: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   onExample: (q: string) => void;
   health: Health | null | 'offline';
+  overrideHost: string | null;
+  onResetBackend: () => void;
 }) {
   const embed = health && health !== 'offline' ? health.embed_model : undefined;
   const llm = health && health !== 'offline' ? health.llm_model : undefined;
@@ -259,7 +310,7 @@ function StartPage({
             </button>
           </div>
         </nav>
-        <StatusBar health={health} />
+        <StatusBar health={health} overrideHost={overrideHost} onReset={onResetBackend} />
       </header>
 
       <section id="top" className="relative overflow-hidden">
@@ -308,7 +359,7 @@ function StartPage({
           <p className={`${LABEL} text-muted`}>What happens when you search</p>
           {[
             'Type a topic.',
-            'We pull up to 30 candidate papers from arXiv.',
+            'We pull up to 50 candidate papers from arXiv, plus up to 10 title matches.',
             `${embed ?? 'An embedding model'} ranks every abstract against your words.`,
             `${llm ?? 'A language model'} writes the TL;DR, problem, method and benchmarks for each paper.`,
             'Then checks each summary against its abstract.',
@@ -346,9 +397,21 @@ function StartPage({
   );
 }
 
-function StatusBar({ health }: { health: Health | null | 'offline' }) {
+function StatusBar({
+  health,
+  overrideHost,
+  onReset,
+}: {
+  health: Health | null | 'offline';
+  overrideHost: string | null;
+  onReset: () => void;
+}) {
   return (
-    <div className={`${LABEL} flex h-10 items-center justify-center gap-3 overflow-hidden border-t border-line px-4 text-ink-2`}>
+    <div
+      role="status"
+      aria-live="polite"
+      className={`${LABEL} flex h-10 items-center justify-center gap-3 overflow-hidden border-t border-line px-4 text-ink-2`}
+    >
       {health === null && <span className="text-muted">Checking the backend</span>}
       {health === 'offline' && (
         <span className="flex items-center gap-2 truncate text-warn">
@@ -365,6 +428,19 @@ function StatusBar({ health }: { health: Health | null | 'offline' }) {
             {health.llm_model && <span className="hidden md:inline"> · summaries {health.llm_model}</span>}
             {health.hybrid_retrieval ? ' · hybrid retrieval' : ''}
           </span>
+        </span>
+      )}
+      {overrideHost && (
+        <span className="flex shrink-0 items-center gap-2 text-muted">
+          · backend {overrideHost}
+          <button
+            type="button"
+            onClick={onReset}
+            className="rounded-sm text-accent underline-offset-2 hover:underline"
+            aria-label={`Stop using the backend at ${overrideHost}`}
+          >
+            reset
+          </button>
         </span>
       )}
     </div>
@@ -410,6 +486,7 @@ function SearchField({
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
           disabled={disabled}
+          maxLength={500}
           aria-label="Research topic"
         />
         <button
@@ -458,11 +535,16 @@ function TopBar({
         <div className="hidden w-[190px] shrink-0 justify-end md:flex">
           {meta && (
             <p
-              className={`${LABEL} flex items-center gap-2 text-muted`}
-              title={meta.cache_path === 'warm' ? 'Served from the semantic cache' : 'Fetched live from arXiv'}
+              className={`${LABEL} flex items-center gap-2 ${meta.cache_path === 'stale' ? 'text-warn' : 'text-muted'}`}
+              title={CACHE_PATH_TEXT[meta.cache_path]?.title ?? ''}
             >
-              <span className={`h-1.5 w-1.5 ${meta.cache_path === 'warm' ? 'bg-ink-2' : 'bg-accent'}`} aria-hidden />
-              {meta.cache_path === 'warm' ? 'Cached' : 'Live'} · {meta.latency_seconds.toFixed(1)} s
+              <span
+                className={`h-1.5 w-1.5 ${
+                  meta.cache_path === 'cold' ? 'bg-accent' : meta.cache_path === 'stale' ? 'bg-warn' : 'bg-ink-2'
+                }`}
+                aria-hidden
+              />
+              {CACHE_PATH_TEXT[meta.cache_path]?.label ?? 'Live'} · {meta.latency_seconds.toFixed(1)} s
             </p>
           )}
         </div>
@@ -722,10 +804,21 @@ function Synthesis({
   );
 }
 
+const PLACEHOLDER_FIELDS = new Set(['', 'N/A', 'NA', 'ERROR']);
+
+// A summary whose every field is a placeholder ('Error' after a failed LLM call,
+// or 'N/A') carries no content and is shown as "no summary".
+function hasContent(s: Paper['summary']): s is NonNullable<Paper['summary']> {
+  if (!s) return false;
+  return [s.tldr, s.problem, s.methods, s.benchmarks].some(
+    (v) => !PLACEHOLDER_FIELDS.has(String(v ?? '').trim().toUpperCase()),
+  );
+}
+
 function PaperReader({ paper }: { paper: Paper }) {
-  const s = paper.summary;
+  const s = hasContent(paper.summary) ? paper.summary : null;
   const grounding = s?.grounding;
-  const groundPct = grounding ? Math.round(grounding.score * 100) : null;
+  const groundPct = grounding && typeof grounding.score === 'number' ? Math.round(grounding.score * 100) : null;
   const weak = groundPct !== null && groundPct < 50;
 
   return (
@@ -771,7 +864,7 @@ function PaperReader({ paper }: { paper: Paper }) {
             <BenchmarksPanel benchmarks={s.benchmarks} />
           </div>
 
-          {grounding && (
+          {grounding && groundPct !== null && (
             <div className="mt-10 border-t border-line pt-5 text-[13px]">
               <p className={`flex items-start gap-2 ${weak ? 'text-warn' : 'text-ink-2'}`}>
                 {weak ? (
@@ -802,7 +895,7 @@ function PaperReader({ paper }: { paper: Paper }) {
           )}
         </>
       ) : (
-        <p className="mt-8 text-[14px] text-muted">No summary for this paper. The abstract is below.</p>
+        <p className="mt-8 text-[14px] text-muted">No summary is available for this paper right now. The abstract is below.</p>
       )}
 
       {paper.abstract && (
@@ -831,7 +924,7 @@ function ReaderSection({ label, children }: { label: string; children: React.Rea
 function LoadingView({ step, topic }: { step: number; topic: string }) {
   const current = PIPELINE_STEPS[Math.max(0, step)];
   return (
-    <div className={PANES} aria-busy="true">
+    <div className={PANES} aria-busy="true" role="status" aria-label={`Searching for ${topic}`}>
       <aside className={LIST_PANE}>
         <div className={PANE_HEAD}>
           <h2 className={`${LABEL} text-ink`}>Ranked papers</h2>
@@ -896,8 +989,8 @@ function LoadingView({ step, topic }: { step: number; topic: string }) {
             <RevealWords text={`“${topic}”`} step={60} />
           </p>
           <p className="mt-5 max-w-[52ch] text-[15px] leading-relaxed text-ink-2">
-            {current.doing}. A new topic usually takes 10 to 20 seconds; topics searched before come from the cache and
-            return faster.
+            {current.doing}. A new topic usually takes 10 to 20 seconds; short topics searched recently may come from
+            the cache and return faster.
           </p>
         </div>
       </section>
@@ -927,7 +1020,10 @@ function StateMessage({
   tone?: 'warn';
 }) {
   return (
-    <main className="relative mx-auto w-full max-w-[720px] px-4 py-20 sm:px-6">
+    <main
+      role={tone === 'warn' ? 'alert' : 'status'}
+      className="relative mx-auto w-full max-w-[720px] px-4 py-20 sm:px-6"
+    >
       <p className={`${LABEL} flex items-center gap-2 ${tone === 'warn' ? 'text-warn' : 'text-accent'}`}>
         {tone === 'warn' && <AlertTriangle className="h-3.5 w-3.5" aria-hidden />}
         {tone === 'warn' ? 'Error' : 'No results'}
