@@ -75,3 +75,14 @@ def test_benchmark_end_to_end(tmp_path):
                   {"n_docs": len(c), "seeds": [1, 2], "k": 10})
     for name in ("results.csv", "summary.json", "summary.md", "noise_char.png", "noise_oov.png"):
         assert (tmp_path / name).stat().st_size > 0
+
+
+def test_graph_clustering_methods():
+    from backend.app import graph
+    # two triangles joined by one weak link: components = 1 group, modularity = 2
+    links = [{"source": a, "target": b, "weight": w} for a, b, w in
+             [(0, 1, .9), (1, 2, .9), (0, 2, .9), (3, 4, .9), (4, 5, .9), (3, 5, .9), (2, 3, .43)]]
+    assert len(graph.cluster(6, links, "components")) == 1
+    groups = graph.cluster(6, links, "modularity")
+    assert sorted(map(sorted, groups.values())) == [[0, 1, 2], [3, 4, 5]]
+    assert graph.cluster(3, [], "modularity") == {0: [0], 1: [1], 2: [2]}

@@ -32,7 +32,7 @@ from .noise import INTENSITIES, NOISE_FUNCS, corrupt_queries
 from .systems import build_system
 
 
-def run(corpus, model_specs, noise_kinds, intensities, seeds, k):
+def run(corpus, model_specs, noise_kinds, intensities, seeds, k, ranks_out=None):
     queries = [r["title"] for r in corpus]
     docs = [r["abstract"] for r in corpus]
     targets = list(range(len(corpus)))
@@ -45,7 +45,10 @@ def run(corpus, model_specs, noise_kinds, intensities, seeds, k):
         index_s = time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        clean = summarize(ranks_of_targets(system.score(queries), targets), k)
+        clean_ranks = ranks_of_targets(system.score(queries), targets)
+        clean = summarize(clean_ranks, k)
+        if ranks_out is not None:
+            ranks_out[f"{system.name.replace(chr(47), '__')}|clean|0.0|{seeds[0]}"] = clean_ranks
         query_ms = 1000 * (time.perf_counter() - t0) / len(queries)
         timings[system.name] = {
             "family": system.family,
@@ -60,7 +63,10 @@ def run(corpus, model_specs, noise_kinds, intensities, seeds, k):
             for rho in intensities:
                 for seed in seeds:
                     noisy = corrupt_queries(queries, kind, rho, seed)
-                    m = summarize(ranks_of_targets(system.score(noisy), targets), k)
+                    rk = ranks_of_targets(system.score(noisy), targets)
+                    m = summarize(rk, k)
+                    if ranks_out is not None:
+                        ranks_out[f"{system.name.replace(chr(47), '__')}|{kind}|{rho}|{seed}"] = rk
                     rows.append({"system": system.name, "family": system.family, "noise": kind,
                                  "intensity": rho, "seed": seed, **m})
             print(f"[{system.name}] {kind} done")
@@ -145,7 +151,7 @@ def write_outputs(rows, timings, out_dir, k, noise_kinds, intensities, meta):
                         markersize=5)
         ax.set_xlabel("Query noise (%)")
         ax.set_ylabel(metric)
-        ax.set_title(f"{metric} vs. {kind} noise (mean ± 95% CI over seeds)")
+        ax.set_title(f"{metric} vs. {kind} noise (mean ± 95% t-interval over seeds)")
         ax.grid(alpha=0.3)
         ax.legend(fontsize=8)
         fig.tight_layout()
@@ -164,13 +170,22 @@ def main() -> None:
     ap.add_argument("--k", type=int, default=10)
     ap.add_argument("--limit", type=int, default=None, help="use only the first N papers")
     ap.add_argument("--out", default="eval/results")
+    ap.add_argument("--save-ranks", action="store_true",
+                    help="also write per-query ranks (ranks.npz) for significance tests")
     args = ap.parse_args()
 
+    import hashlib
     corpus = load_corpus(args.corpus, args.limit)
-    rows, timings = run(corpus, args.models, args.noise, args.intensities, args.seeds, args.k)
+    ranks = {} if args.save_ranks else None
+    rows, timings = run(corpus, args.models, args.noise, args.intensities, args.seeds, args.k, ranks)
+    with open(args.corpus, "rb") as fh:
+        corpus_sha = hashlib.sha256(fh.read()).hexdigest()
     meta = {"n_docs": len(corpus), "seeds": args.seeds, "k": args.k,
-            "corpus": args.corpus, "models": args.models}
+            "corpus": args.corpus, "corpus_sha256": corpus_sha, "models": args.models,
+            "interval": "Student-t 95% over seeds"}
     write_outputs(rows, timings, args.out, args.k, args.noise, args.intensities, meta)
+    if ranks is not None:
+        np.savez_compressed(os.path.join(args.out, "ranks.npz"), **ranks)
     print(f"wrote results to {args.out}/")
 
 

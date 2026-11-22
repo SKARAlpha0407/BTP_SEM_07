@@ -73,3 +73,4 @@ EXPOSE_DOCS = _b("EXPOSE_DOCS", False)  # serve /docs, /openapi.json and /metric
 
 # --- Graph ------------------------------------------------------------------
 GRAPH_MAX_NODES = _i("GRAPH_MAX_NODES", 30)
+GRAPH_CLUSTERING = os.environ.get("GRAPH_CLUSTERING", "components")  # or "modularity"

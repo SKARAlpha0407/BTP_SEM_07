@@ -56,6 +56,26 @@ class BM25System(System):
         return np.vstack([self.bm25.scores(q) for q in queries])
 
 
+class CharTfidfSystem(System):
+    """Character n-gram TF-IDF (3-5 grams within word boundaries), cosine.
+
+    A lexical baseline that matches sub-word pieces, so misspellings still
+    share most of their n-grams with the original word."""
+
+    name = "char-tfidf"
+    family = "lexical-subword"
+
+    def index(self, docs):
+        from sklearn.feature_extraction.text import TfidfVectorizer
+
+        self.vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), sublinear_tf=True)
+        self.doc_m = self.vec.fit_transform(docs)
+
+    def score(self, queries):
+        q = self.vec.transform(queries)
+        return (q @ self.doc_m.T).toarray()
+
+
 class HybridSystem(System):
     family = "hybrid"
 
@@ -89,6 +109,8 @@ class HybridSystem(System):
 def build_system(spec: str) -> System:
     if spec == "bm25":
         return BM25System()
+    if spec == "char-tfidf":
+        return CharTfidfSystem()
     if spec.startswith("hybrid:"):
         return HybridSystem(spec.split(":", 1)[1])
     return DenseSystem(spec)

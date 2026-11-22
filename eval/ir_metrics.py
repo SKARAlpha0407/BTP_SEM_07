@@ -32,8 +32,13 @@ def summarize(ranks: np.ndarray, k: int = 10) -> Dict[str, float]:
 
 
 def mean_ci95(values: Sequence[float]) -> tuple:
-    """Mean and half-width of a normal-approximation 95% interval across seeds."""
+    """Mean and half-width of a Student-t 95% interval across seeds.
+
+    With few seeds (e.g. 5) the t critical value (2.776 for 4 degrees of
+    freedom) is used instead of 1.96, which would understate the width."""
+    from scipy.stats import t
+
     v = np.asarray(values, dtype=np.float64)
     if len(v) < 2:
         return float(v.mean()), 0.0
-    return float(v.mean()), float(1.96 * v.std(ddof=1) / math.sqrt(len(v)))
+    return float(v.mean()), float(t.ppf(0.975, len(v) - 1) * v.std(ddof=1) / math.sqrt(len(v)))

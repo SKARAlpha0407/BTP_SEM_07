@@ -8,7 +8,7 @@ import os
 import math
 import time
 
-from . import config, ratelimit, telemetry
+from . import config, graph, ratelimit, telemetry
 from .arxiv_client import ArxivUnavailable, search_papers
 from .embedding_service import (
     rank_with_cached_vectors,
@@ -471,96 +471,14 @@ def search(req: SearchRequest, request: Request):
                 [{"title": p.title, "summary": p.summary} for p in top_papers]
             )
 
-        # Graph nodes
+        # Reading map: nodes, links and clusters (backend/app/graph.py)
         graph_papers = ranked_papers[:min(config.GRAPH_MAX_NODES, len(ranked_papers))]
-        nodes: List[Dict[str, Any]] = []
-        for i, p in enumerate(graph_papers):
-            year_str = p.published[:4] if p.published and len(p.published) >= 4 else "0"
-            try:
-                year = int(year_str)
-            except ValueError:
-                year = 0
-            
-            first_author = next(
-                (a.split()[-1] for a in (p.authors or []) if a and a.split()), "Unknown"
-            )
-            short_label = f"{first_author} {year}" if year > 0 else first_author
-            cat = p.categories[0] if p.categories else ""
-            auths = list({a.split()[-1] for a in (p.authors or []) if a.split()})[:5]
-            
-            nodes.append({
-                "id": i,
-                "title": p.title,
-                "short_label": short_label,
-                "year": year,
-                "primary_category": cat,
-                "author_surnames": auths,
-                "arxiv_url": p.arxiv_url,
-                "pdf_url": p.pdf_url,
-                "val": p.relevance_score or 0,
-                "degree": 0,
-                "cluster": None
-            })
-
-        # Graph links from combined similarity
-        abstracts = [p.abstract for p in graph_papers]
-        embs = embed_batch(abstracts)
+        nodes = graph.build_nodes(graph_papers)
+        embs = embed_batch([p.abstract for p in graph_papers])
         links: List[Dict[str, Any]] = []
         if embs is not None:
-            sim_matrix = cosine_matrix(embs, embs)
-            candidates = []
-            for i in range(len(graph_papers)):
-                for j in range(i + 1, len(graph_papers)):
-                    sim = float(sim_matrix[i][j])
-                    
-                    cats_i = set(graph_papers[i].categories or [])
-                    cats_j = set(graph_papers[j].categories or [])
-                    cat_jac = len(cats_i & cats_j) / max(len(cats_i | cats_j), 1) if cats_i and cats_j else 0.0
-                    
-                    auth_i = set(nodes[i]["author_surnames"])
-                    auth_j = set(nodes[j]["author_surnames"])
-                    shared_auth = 1.0 if auth_i & auth_j else 0.0
-                    
-                    weight = 0.65 * sim + 0.25 * cat_jac + 0.10 * shared_auth
-                    candidates.append((i, j, weight))
-
-            candidates.sort(key=lambda x: x[2], reverse=True)
-            threshold = 0.35 if len(candidates) < len(graph_papers) else 0.42
-            max_edges = len(graph_papers) * 3
-            
-            for i, j, w in candidates:
-                if w >= threshold and len(links) < max_edges:
-                    links.append({"source": i, "target": j, "weight": w})
-                    nodes[i]["degree"] += 1
-                    nodes[j]["degree"] += 1
-
-        max_deg = max((n["degree"] for n in nodes), default=1) or 1
-        for n in nodes:
-            n["val"] = 0.55 * (n["degree"] / max_deg) + 0.45 * n["val"]
-
-        # Connected-components clustering
-        visited: set[int] = set()
-        clusters: Dict[int, List[int]] = {}
-        cluster_id = 0
-
-        for i in range(len(graph_papers)):
-            if i in visited:
-                continue
-            component: List[int] = []
-            stack = [i]
-            while stack:
-                node = stack.pop()
-                if node in visited:
-                    continue
-                visited.add(node)
-                component.append(node)
-                for link in links:
-                    if link["source"] == node:
-                        stack.append(link["target"])
-                    elif link["target"] == node:
-                        stack.append(link["source"])
-            clusters[cluster_id] = component
-            cluster_id += 1
+            links = graph.build_links(graph_papers, nodes, cosine_matrix(embs, embs))
+        clusters = graph.cluster(len(graph_papers), links, config.GRAPH_CLUSTERING)
 
         # Theme names from the LLM
         label_input = {
