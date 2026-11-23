@@ -371,7 +371,8 @@ def search(req: SearchRequest, request: Request):
                     raw_papers = search_papers(topic, max_results=config.ARXIV_CANDIDATES)
             except ArxivUnavailable:
                 telemetry.incr("arxiv_unavailable")
-                cache_hits = _stale_cached_papers(query_vec, req.max_results)
+                # Enough stored papers for the whole reading map, not just the top list.
+                cache_hits = _stale_cached_papers(query_vec, max(req.max_results, config.GRAPH_MAX_NODES))
                 if not cache_hits:
                     raise HTTPException(
                         status_code=503,

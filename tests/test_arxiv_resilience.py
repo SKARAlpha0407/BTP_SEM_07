@@ -206,3 +206,38 @@ def test_old_style_ids_keep_their_archive(monkeypatch):
             return [R()]
     monkeypatch.setattr(arxiv_client, "_client", C())
     assert arxiv_client._fetch("all:x", 1)[0].arxiv_id == "hep-th/9804003v2"
+
+
+def test_stale_fallback_fills_the_whole_map(api, monkeypatch):
+    main, client = api
+    from tests.toy import corpus
+
+    stored = [Paper(title=r["title"], authors=["A B"], abstract=r["abstract"], arxiv_id=r["arxiv_id"],
+                    arxiv_url="u", pdf_url="p", published=r["published"], categories=r["categories"])
+              for r in corpus()]
+    asked = []
+
+    def stale(vec, limit):
+        asked.append(limit)
+        out = stored[:limit]
+        for i, p in enumerate(out):
+            p.relevance_score = 0.9 - i * 0.01
+        return out
+
+    def down(topic, max_results=30):
+        raise ArxivUnavailable("429")
+
+    monkeypatch.setattr(main, "search_papers", down)
+    monkeypatch.setattr(main, "_stale_cached_papers", stale)
+    monkeypatch.setattr(main, "embed_text", lambda t: __import__("numpy").ones(384), raising=False)
+    monkeypatch.setattr(main, "extract_insights_batch", lambda items: [
+        {"index": i, "tldr": "t", "problem": "p", "methods": "m", "benchmarks": "b"} for i in range(len(items))])
+    monkeypatch.setattr(main, "synthesize_results", lambda s: "synthesis")
+    monkeypatch.setattr(main, "get_cluster_labels", lambda c, topic="": {})
+    r = client.post("/search", json={"topic": "retrieval augmented generation", "max_results": 5})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["meta"]["cache_path"] == "stale"
+    assert asked == [30]
+    assert len(body["papers"]) == 5
+    assert len(body["graph"]["nodes"]) == min(30, len(stored))
